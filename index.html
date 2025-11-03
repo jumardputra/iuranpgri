@@ -1,0 +1,3440 @@
+<!doctype html>
+<html lang="id">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iuran PGRI SMAN 1 Singkep Selatan</title>
+  <script src="/_sdk/data_sdk.js"></script>
+  <script src="/_sdk/element_sdk.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      box-sizing: border-box;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    .fade-in {
+      animation: fadeIn 0.3s ease-out;
+    }
+    
+    @keyframes scroll {
+      0% { transform: translateX(100%); }
+      100% { transform: translateX(-100%); }
+    }
+    
+    .scrolling-text {
+      animation: scroll 25s linear infinite;
+    }
+    
+    .scrolling-text:hover {
+      animation-play-state: paused;
+    }
+    
+    .status-badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    
+    .status-lunas {
+      background-color: #dcfce7;
+      color: #166534;
+    }
+    
+    .status-belum {
+      background-color: #fee2e2;
+      color: #991b1b;
+    }
+    
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      .print-area, .print-area * {
+        visibility: visible;
+      }
+      .print-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+      }
+    }
+  </style>
+  <style>@view-transition { navigation: auto; }</style>
+ </head>
+ <body class="min-h-full">
+  <div id="app" class="min-h-full"></div>
+  <script>
+    const defaultConfig = {
+      judul_utama: "IURAN PGRI",
+      subjudul: "SMAN 1 SINGKEP SELATAN",
+      label_no: "No",
+      label_nama: "Nama",
+      label_jabatan: "Jabatan",
+      label_bulan: "Bulan / Status",
+      label_total: "Total",
+      label_aksi: "Aksi",
+      tombol_tambah: "+ Tambah Data",
+      tombol_cetak: "Cetak",
+      background_color: "#f0f9ff",
+      card_color: "#ffffff",
+      primary_color: "#0284c7",
+      text_color: "#0f172a",
+      accent_color: "#0ea5e9",
+      font_family: "Inter",
+      font_size: 16
+    };
+
+    let allData = [];
+    let isLoading = false;
+    let selectedYear = 2024;
+    let filteredData = [];
+    let sortBy = 'nama'; // 'nama' or 'jabatan'
+    let sortOrder = 'asc'; // 'asc' or 'desc'
+    let csvData = []; // Store parsed CSV data for preview
+    let currentTab = 'manual'; // Track current tab
+
+    const dataHandler = {
+      onDataChanged(data) {
+        allData = data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        filterDataByYear();
+        renderApp();
+      }
+    };
+
+    function filterDataByYear() {
+      filteredData = allData.filter(record => {
+        const paymentYear = new Date(record.tanggal_bayar).getFullYear();
+        return paymentYear === selectedYear;
+      });
+      sortData();
+    }
+
+    function sortData() {
+      // Group data by person name first
+      const groupedData = {};
+      filteredData.forEach(record => {
+        if (!groupedData[record.nama]) {
+          groupedData[record.nama] = {
+            person: record,
+            payments: []
+          };
+        }
+        groupedData[record.nama].payments.push(record);
+      });
+
+      // Sort the grouped data
+      const sortedPersons = Object.keys(groupedData).sort((a, b) => {
+        const personA = groupedData[a].person;
+        const personB = groupedData[b].person;
+        
+        let valueA, valueB;
+        if (sortBy === 'nama') {
+          valueA = personA.nama.toLowerCase();
+          valueB = personB.nama.toLowerCase();
+        } else {
+          valueA = personA.jabatan.toLowerCase();
+          valueB = personB.jabatan.toLowerCase();
+        }
+
+        if (sortOrder === 'asc') {
+          return valueA.localeCompare(valueB, 'id');
+        } else {
+          return valueB.localeCompare(valueA, 'id');
+        }
+      });
+
+      // Rebuild filteredData in sorted order
+      filteredData = [];
+      sortedPersons.forEach(personName => {
+        filteredData.push(...groupedData[personName].payments);
+      });
+    }
+
+    function changeSorting(newSortBy) {
+      if (sortBy === newSortBy) {
+        sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+      } else {
+        sortBy = newSortBy;
+        sortOrder = 'asc';
+      }
+      filterDataByYear();
+      renderApp();
+    }
+
+    function changeYear(year) {
+      selectedYear = year;
+      filterDataByYear();
+      renderApp();
+    }
+
+    async function initApp() {
+      // Show loading indicator
+      showLoadingState();
+      
+      const result = await window.dataSdk.init(dataHandler);
+      if (!result.isOk) {
+        console.error("Failed to initialize data SDK");
+        hideLoadingState();
+        showToast("Gagal menginisialisasi sistem data", "error");
+        return;
+      }
+
+      // Hide loading indicator once data is loaded
+      hideLoadingState();
+    }
+
+    function showLoadingState() {
+      const app = document.getElementById('app');
+      const config = window.elementSdk?.config || defaultConfig;
+      const baseSize = config.font_size || defaultConfig.font_size;
+      const primaryColor = config.primary_color || defaultConfig.primary_color;
+      const backgroundColor = config.background_color || defaultConfig.background_color;
+      
+      app.style.backgroundColor = backgroundColor;
+      app.innerHTML = `
+        <div class="min-h-full flex items-center justify-center p-8">
+          <div class="text-center">
+            <div class="inline-block animate-spin rounded-full h-16 w-16 border-4 border-gray-300 mb-6" style="border-top-color: ${primaryColor};"></div>
+            <h2 class="font-bold mb-2" style="font-size: ${baseSize * 1.5}px; color: ${primaryColor};">
+              Memuat Data Iuran PGRI
+            </h2>
+            <p class="text-gray-600" style="font-size: ${baseSize}px;">
+              Sedang mengambil data dari Canva Sheet...
+            </p>
+            <div class="mt-4 flex justify-center">
+              <div class="flex space-x-1">
+                <div class="w-2 h-2 rounded-full animate-pulse" style="background-color: ${primaryColor};"></div>
+                <div class="w-2 h-2 rounded-full animate-pulse" style="background-color: ${primaryColor}; animation-delay: 0.2s;"></div>
+                <div class="w-2 h-2 rounded-full animate-pulse" style="background-color: ${primaryColor}; animation-delay: 0.4s;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function hideLoadingState() {
+      // Loading state will be replaced by renderApp() call from onDataChanged
+    }
+
+    function getMonthlyPayments(personName, year) {
+      const months = [
+        "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+        "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+      ];
+      
+      const payments = {};
+      months.forEach(month => {
+        payments[month] = null;
+      });
+
+      allData.forEach(record => {
+        if (record.nama === personName) {
+          const recordYear = new Date(record.tanggal_bayar).getFullYear();
+          if (recordYear === year) {
+            const monthName = record.bulan.split(' ')[0];
+            if (payments.hasOwnProperty(monthName)) {
+              payments[monthName] = record;
+            }
+          }
+        }
+      });
+
+      return payments;
+    }
+
+    function showDetailModal(personName) {
+      const detailModal = document.getElementById('detailModal');
+      if (detailModal) {
+        // Update modal content with person's data
+        updateDetailModalContent(personName);
+        detailModal.classList.remove('hidden');
+      }
+    }
+
+    function closeDetailModal() {
+      const modal = document.getElementById('detailModal');
+      if (modal) {
+        modal.classList.add('hidden');
+      }
+    }
+
+    function updateDetailModalContent(personName) {
+      const config = window.elementSdk?.config || defaultConfig;
+      const baseSize = config.font_size || defaultConfig.font_size;
+      const customFont = config.font_family || defaultConfig.font_family;
+      const primaryColor = config.primary_color || defaultConfig.primary_color;
+      const textColor = config.text_color || defaultConfig.text_color;
+      const cardColor = config.card_color || defaultConfig.card_color;
+
+      const payments2024 = getMonthlyPayments(personName, 2024);
+      const payments2025 = getMonthlyPayments(personName, 2025);
+      
+      const months = [
+        "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+        "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+      ];
+
+      function renderYearCalendar(payments, year) {
+        return `
+          <div class="mb-6">
+            <h4 class="font-bold mb-3" style="font-size: ${baseSize * 1.1}px; color: ${primaryColor};">
+              Tahun ${year}
+            </h4>
+            <div class="grid grid-cols-3 md:grid-cols-4 gap-2">
+              ${months.map(month => {
+                const payment = payments[month];
+                const isLunas = payment && payment.status_bayar === 'Lunas';
+                const isBelumLunas = payment && payment.status_bayar === 'Belum Lunas';
+                
+                return `
+                  <div class="p-2 rounded-lg border text-center text-sm ${
+                    isLunas ? 'bg-green-100 border-green-300' : 
+                    isBelumLunas ? 'bg-red-100 border-red-300' : 
+                    'bg-gray-100 border-gray-300'
+                  }" style="font-size: ${baseSize * 0.8}px;">
+                    <div class="font-medium" style="color: ${textColor};">${month}</div>
+                    <div class="text-xs mt-1" style="color: ${
+                      isLunas ? '#166534' : 
+                      isBelumLunas ? '#991b1b' : 
+                      '#6b7280'
+                    };">
+                      ${isLunas ? '✓ Lunas' : isBelumLunas ? '✗ Belum' : '- Belum Ada'}
+                    </div>
+                    ${payment ? `
+                      <div class="text-xs mt-1" style="color: #6b7280;">
+                        ${formatDate(payment.tanggal_bayar)}
+                      </div>
+                    ` : ''}
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      const modalContent = document.getElementById('detailModalContent');
+      if (modalContent) {
+        modalContent.innerHTML = `
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="font-bold" style="font-size: ${baseSize * 1.5}px; color: ${primaryColor};">
+              Detail Pembayaran
+            </h2>
+            <button 
+              onclick="closeDetailModal()"
+              class="text-gray-500 hover:text-gray-700 text-2xl font-bold"
+            >
+              ×
+            </button>
+          </div>
+
+          <div class="mb-4">
+            <h3 class="font-bold mb-2" style="font-size: ${baseSize * 1.2}px; color: ${textColor};">
+              ${personName}
+            </h3>
+          </div>
+
+          ${renderYearCalendar(payments2024, 2024)}
+          ${renderYearCalendar(payments2025, 2025)}
+
+          <div class="mt-6 p-4 rounded-lg" style="background-color: #f8fafc;">
+            <div class="grid grid-cols-2 gap-4 text-center">
+              <div>
+                <div class="font-semibold" style="color: ${textColor}; font-size: ${baseSize * 0.9}px;">
+                  Total Lunas 2024
+                </div>
+                <div class="font-bold text-green-600" style="font-size: ${baseSize * 1.2}px;">
+                  ${Object.values(payments2024).filter(p => p && p.status_bayar === 'Lunas').length} bulan
+                </div>
+              </div>
+              <div>
+                <div class="font-semibold" style="color: ${textColor}; font-size: ${baseSize * 0.9}px;">
+                  Total Lunas 2025
+                </div>
+                <div class="font-bold text-green-600" style="font-size: ${baseSize * 1.2}px;">
+                  ${Object.values(payments2025).filter(p => p && p.status_bayar === 'Lunas').length} bulan
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    function formatCurrency(amount) {
+      return new Intl.NumberFormat('id-ID', {
+        style: 'currency',
+        currency: 'IDR',
+        minimumFractionDigits: 0
+      }).format(amount);
+    }
+
+    function formatDate(dateString) {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('id-ID', { 
+        day: '2-digit', 
+        month: 'short', 
+        year: 'numeric' 
+      });
+    }
+
+    async function handleAddData(event) {
+      event.preventDefault();
+      
+      if (allData.length >= 999) {
+        showToast("Batas maksimum 999 data tercapai. Hapus beberapa data terlebih dahulu.", "error");
+        return;
+      }
+
+      const formData = new FormData(event.target);
+      const nama = formData.get('nama').trim();
+      const jabatan = formData.get('jabatan').trim();
+      const tahun = formData.get('tahun');
+      const tanggal_bayar = formData.get('tanggal_bayar');
+      const status_bayar = formData.get('status_bayar');
+      const total_pembayaran = parseFloat(formData.get('total_pembayaran'));
+
+      // Ambil semua bulan yang dipilih
+      const selectedMonths = formData.getAll('bulan_pilihan');
+
+      if (!nama || !jabatan || selectedMonths.length === 0 || !tahun || !tanggal_bayar || !status_bayar || isNaN(total_pembayaran)) {
+        showToast("Mohon lengkapi semua field dan pilih minimal satu bulan", "error");
+        return;
+      }
+
+      // Cek apakah total data yang akan ditambahkan melebihi batas
+      if (allData.length + selectedMonths.length > 999) {
+        showToast(`Tidak dapat menambahkan ${selectedMonths.length} data. Batas maksimum 999 data akan terlampaui.`, "error");
+        return;
+      }
+
+      isLoading = true;
+      renderApp();
+
+      let successCount = 0;
+      let failedMonths = [];
+
+      // Validasi jumlah pembayaran sesuai aturan
+      if (total_pembayaran !== 15000 && total_pembayaran !== 25000) {
+        showToast("Jumlah pembayaran harus sesuai dengan aturan yang berlaku", "error");
+        return;
+      }
+
+      // Buat data untuk setiap bulan yang dipilih
+      for (const bulan_nama of selectedMonths) {
+        const bulan = `${bulan_nama} ${tahun}`;
+        
+        const newData = {
+          id: `${Date.now()}_${bulan_nama}_${Math.random().toString(36).substr(2, 9)}`,
+          nama,
+          jabatan,
+          bulan,
+          tanggal_bayar,
+          status_bayar,
+          total_pembayaran: total_pembayaran, // Gunakan nilai yang dipilih user
+          created_at: new Date().toISOString()
+        };
+
+        const result = await window.dataSdk.create(newData);
+        
+        if (result.isOk) {
+          successCount++;
+        } else {
+          failedMonths.push(bulan_nama);
+        }
+      }
+      
+      isLoading = false;
+
+      if (successCount === selectedMonths.length) {
+        event.target.reset();
+        closeModal();
+        const totalKeseluruhan = total_pembayaran * selectedMonths.length;
+        showToast(`Berhasil menambahkan ${successCount} data pembayaran (${formatCurrency(total_pembayaran)}/bulan × ${selectedMonths.length} bulan = ${formatCurrency(totalKeseluruhan)})`, "success");
+      } else if (successCount > 0) {
+        showToast(`Berhasil menambahkan ${successCount} dari ${selectedMonths.length} data. Gagal: ${failedMonths.join(', ')}`, "error");
+        renderApp();
+      } else {
+        showToast("Gagal menambahkan semua data", "error");
+        renderApp();
+      }
+    }
+
+    async function handleDelete(record) {
+      const deleteBtn = document.querySelector(`[data-delete-id="${record.id}"]`);
+      if (!deleteBtn) return;
+
+      if (deleteBtn.textContent === 'Hapus') {
+        deleteBtn.textContent = 'Yakin?';
+        deleteBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
+        deleteBtn.classList.add('bg-red-700');
+        
+        setTimeout(() => {
+          if (deleteBtn) {
+            deleteBtn.textContent = 'Hapus';
+            deleteBtn.classList.remove('bg-red-700');
+            deleteBtn.classList.add('bg-red-500', 'hover:bg-red-600');
+          }
+        }, 3000);
+        return;
+      }
+
+      isLoading = true;
+      renderApp();
+
+      const result = await window.dataSdk.delete(record);
+      
+      isLoading = false;
+
+      if (result.isOk) {
+        showToast("Data berhasil dihapus", "success");
+      } else {
+        showToast("Gagal menghapus data", "error");
+        renderApp();
+      }
+    }
+
+    function showEditModal(personName) {
+      // Find the first record for this person to get current data
+      const personRecord = allData.find(record => record.nama === personName);
+      if (!personRecord) return;
+
+      const editModal = document.getElementById('editModal');
+      if (editModal) {
+        // Populate form with current data
+        document.getElementById('editNama').value = personRecord.nama;
+        document.getElementById('editJabatan').value = personRecord.jabatan;
+        document.getElementById('editPersonName').value = personName;
+        editModal.classList.remove('hidden');
+      }
+    }
+
+    function showDeletePersonModal(personName) {
+      const deleteModal = document.getElementById('deletePersonModal');
+      if (deleteModal) {
+        // Populate form with person name
+        document.getElementById('deletePersonName').value = personName;
+        document.getElementById('deletePersonNameDisplay').textContent = personName;
+        deleteModal.classList.remove('hidden');
+      }
+    }
+
+    function closeDeletePersonModal() {
+      const modal = document.getElementById('deletePersonModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        document.getElementById('deletePersonForm').reset();
+      }
+    }
+
+    async function handleDeletePersonSubmit(event) {
+      event.preventDefault();
+      
+      const formData = new FormData(event.target);
+      const personName = formData.get('personName');
+      const adminPassword = formData.get('adminPassword');
+      const confirmText = formData.get('confirmText');
+
+      // Validasi password admin
+      if (adminPassword !== '4dminPGRI') {
+        showToast('Password admin salah!', 'error');
+        return;
+      }
+
+      // Validasi konfirmasi text
+      if (confirmText !== 'HAPUS SEMUA') {
+        showToast('Konfirmasi text tidak sesuai! Ketik: HAPUS SEMUA', 'error');
+        return;
+      }
+
+      isLoading = true;
+      renderApp();
+
+      // Find all records for this person
+      const personRecords = allData.filter(record => record.nama === personName);
+      let successCount = 0;
+      let totalRecords = personRecords.length;
+
+      if (totalRecords === 0) {
+        showToast('Tidak ada data untuk dihapus', 'error');
+        isLoading = false;
+        renderApp();
+        return;
+      }
+
+      // Delete all records for this person
+      for (const record of personRecords) {
+        const result = await window.dataSdk.delete(record);
+        if (result.isOk) {
+          successCount++;
+        }
+      }
+
+      isLoading = false;
+
+      if (successCount === totalRecords) {
+        closeDeletePersonModal();
+        showToast(`Berhasil menghapus semua ${successCount} data pembayaran untuk ${personName}`, 'success');
+      } else if (successCount > 0) {
+        showToast(`Hanya berhasil menghapus ${successCount} dari ${totalRecords} data`, 'error');
+        renderApp();
+      } else {
+        showToast('Gagal menghapus semua data', 'error');
+        renderApp();
+      }
+    }
+
+    function closeEditModal() {
+      const modal = document.getElementById('editModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        document.getElementById('editForm').reset();
+      }
+    }
+
+    async function handleEditSubmit(event) {
+      event.preventDefault();
+      
+      const formData = new FormData(event.target);
+      const oldName = formData.get('oldName');
+      const newName = formData.get('nama').trim();
+      const newJabatan = formData.get('jabatan').trim();
+
+      if (!newName || !newJabatan) {
+        showToast("Mohon lengkapi semua field", "error");
+        return;
+      }
+
+      isLoading = true;
+      renderApp();
+
+      // Find all records for this person and update them
+      const personRecords = allData.filter(record => record.nama === oldName);
+      let successCount = 0;
+
+      for (const record of personRecords) {
+        const updatedRecord = {
+          ...record,
+          nama: newName,
+          jabatan: newJabatan
+        };
+
+        const result = await window.dataSdk.update(updatedRecord);
+        if (result.isOk) {
+          successCount++;
+        }
+      }
+
+      isLoading = false;
+
+      if (successCount === personRecords.length) {
+        closeEditModal();
+        showToast(`Berhasil mengupdate ${successCount} data untuk ${newName}`, "success");
+      } else {
+        showToast(`Hanya berhasil mengupdate ${successCount} dari ${personRecords.length} data`, "error");
+        renderApp();
+      }
+    }
+
+    function handlePrint(personName) {
+      const config = window.elementSdk?.config || defaultConfig;
+      const baseSize = config.font_size || defaultConfig.font_size;
+      const customFont = config.font_family || defaultConfig.font_family;
+      const primaryColor = config.primary_color || defaultConfig.primary_color;
+      
+      // Get all payment data for this person
+      const personPayments = allData.filter(record => record.nama === personName);
+      if (personPayments.length === 0) {
+        showToast('Tidak ada data pembayaran untuk dicetak', 'error');
+        return;
+      }
+      
+      const personInfo = personPayments[0]; // Get basic info from first record
+      
+      // Group payments by year
+      const paymentsByYear = {};
+      personPayments.forEach(payment => {
+        const year = new Date(payment.tanggal_bayar).getFullYear();
+        if (!paymentsByYear[year]) {
+          paymentsByYear[year] = [];
+        }
+        paymentsByYear[year].push(payment);
+      });
+      
+      // Sort years
+      const years = Object.keys(paymentsByYear).sort((a, b) => b - a);
+      
+      // Create print content with print controls
+      const printContent = `<!DOCTYPE html>
+        <html>
+        <head>
+          <title>Laporan Pembayaran Iuran - ${personName}</title>
+          <meta charset="UTF-8">
+          <style>
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+            }
+            
+            body {
+              font-family: ${customFont}, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+              font-size: ${baseSize * 0.9}px;
+              line-height: 1.6;
+              color: #333;
+              background: #fff;
+            }
+            
+            .print-controls {
+              position: fixed;
+              top: 20px;
+              right: 20px;
+              z-index: 1000;
+              background: white;
+              padding: 15px;
+              border-radius: 10px;
+              box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+              border: 2px solid ${primaryColor};
+            }
+            
+            .print-controls h3 {
+              margin-bottom: 15px;
+              color: ${primaryColor};
+              font-size: ${baseSize}px;
+              text-align: center;
+            }
+            
+            .control-buttons {
+              display: flex;
+              gap: 10px;
+              flex-direction: column;
+            }
+            
+            .control-btn {
+              padding: 10px 20px;
+              border: none;
+              border-radius: 6px;
+              font-weight: bold;
+              cursor: pointer;
+              transition: all 0.2s;
+              font-size: ${baseSize * 0.9}px;
+            }
+            
+            .print-btn {
+              background: ${primaryColor};
+              color: white;
+            }
+            
+            .print-btn:hover {
+              background: #0369a1;
+              transform: translateY(-1px);
+            }
+            
+            .close-btn {
+              background: #dc2626;
+              color: white;
+            }
+            
+            .close-btn:hover {
+              background: #b91c1c;
+              transform: translateY(-1px);
+            }
+            
+            .save-btn {
+              background: #16a34a;
+              color: white;
+            }
+            
+            .save-btn:hover {
+              background: #15803d;
+              transform: translateY(-1px);
+            }
+            
+            .container {
+              max-width: 210mm;
+              margin: 0 auto;
+              padding: 20mm;
+              min-height: 297mm;
+            }
+            
+            .header {
+              text-align: center;
+              margin-bottom: 30px;
+              padding-bottom: 20px;
+              border-bottom: 3px solid ${primaryColor};
+              position: relative;
+            }
+            
+            .header::before {
+              content: '';
+              position: absolute;
+              top: -10px;
+              left: 50%;
+              transform: translateX(-50%);
+              width: 80px;
+              height: 4px;
+              background: ${primaryColor};
+              border-radius: 2px;
+            }
+            
+            .logo-section {
+              margin-bottom: 15px;
+            }
+            
+            .title {
+              font-size: ${baseSize * 1.8}px;
+              font-weight: bold;
+              color: ${primaryColor};
+              margin-bottom: 5px;
+              letter-spacing: 1px;
+            }
+            
+            .subtitle {
+              font-size: ${baseSize * 1.2}px;
+              color: #666;
+              font-weight: 500;
+            }
+            
+            .document-title {
+              background: linear-gradient(135deg, ${primaryColor}, #0ea5e9);
+              color: white;
+              padding: 15px 20px;
+              border-radius: 10px;
+              text-align: center;
+              margin: 30px 0;
+              font-size: ${baseSize * 1.4}px;
+              font-weight: bold;
+              letter-spacing: 0.5px;
+              box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            }
+            
+            .person-info {
+              background: #f8fafc;
+              border: 2px solid #e2e8f0;
+              border-radius: 12px;
+              padding: 20px;
+              margin-bottom: 30px;
+              position: relative;
+            }
+            
+            .person-info::before {
+              content: '👤';
+              position: absolute;
+              top: -15px;
+              left: 20px;
+              background: white;
+              padding: 5px 10px;
+              border-radius: 20px;
+              font-size: ${baseSize * 1.2}px;
+            }
+            
+            .info-grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 15px;
+              margin-top: 10px;
+            }
+            
+            .info-item {
+              display: flex;
+              align-items: center;
+            }
+            
+            .info-label {
+              font-weight: bold;
+              color: #374151;
+              min-width: 100px;
+              font-size: ${baseSize * 0.95}px;
+            }
+            
+            .info-value {
+              color: #1f2937;
+              font-size: ${baseSize * 0.95}px;
+            }
+            
+            .year-section {
+              margin-bottom: 40px;
+              break-inside: avoid;
+            }
+            
+            .year-header {
+              background: linear-gradient(90deg, ${primaryColor}, #0ea5e9);
+              color: white;
+              padding: 12px 20px;
+              border-radius: 8px 8px 0 0;
+              font-size: ${baseSize * 1.2}px;
+              font-weight: bold;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+            }
+            
+            .year-stats {
+              font-size: ${baseSize * 0.9}px;
+              opacity: 0.9;
+            }
+            
+            .payments-table {
+              width: 100%;
+              border-collapse: collapse;
+              background: white;
+              box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+              border-radius: 0 0 8px 8px;
+              overflow: hidden;
+            }
+            
+            .payments-table th {
+              background: #f1f5f9;
+              color: #374151;
+              font-weight: bold;
+              padding: 12px 15px;
+              text-align: left;
+              font-size: ${baseSize * 0.9}px;
+              border-bottom: 2px solid #e2e8f0;
+            }
+            
+            .payments-table td {
+              padding: 12px 15px;
+              border-bottom: 1px solid #f1f5f9;
+              font-size: ${baseSize * 0.85}px;
+            }
+            
+            .payments-table tr:hover {
+              background: #f8fafc;
+            }
+            
+            .status-badge {
+              display: inline-block;
+              padding: 4px 12px;
+              border-radius: 20px;
+              font-size: ${baseSize * 0.75}px;
+              font-weight: bold;
+              text-align: center;
+            }
+            
+            .status-lunas {
+              background: #dcfce7;
+              color: #166534;
+              border: 1px solid #bbf7d0;
+            }
+            
+            .status-belum {
+              background: #fee2e2;
+              color: #991b1b;
+              border: 1px solid #fecaca;
+            }
+            
+            .amount {
+              font-weight: bold;
+              color: ${primaryColor};
+            }
+            
+            .summary-section {
+              margin-top: 40px;
+              background: linear-gradient(135deg, #f8fafc, #e2e8f0);
+              border-radius: 12px;
+              padding: 25px;
+              border: 2px solid #cbd5e1;
+            }
+            
+            .summary-title {
+              font-size: ${baseSize * 1.3}px;
+              font-weight: bold;
+              color: ${primaryColor};
+              margin-bottom: 20px;
+              text-align: center;
+            }
+            
+            .summary-grid {
+              display: grid;
+              grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+              gap: 20px;
+            }
+            
+            .summary-card {
+              background: white;
+              border-radius: 8px;
+              padding: 15px;
+              text-align: center;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+              border: 1px solid #e2e8f0;
+            }
+            
+            .summary-label {
+              font-size: ${baseSize * 0.85}px;
+              color: #6b7280;
+              margin-bottom: 5px;
+            }
+            
+            .summary-value {
+              font-size: ${baseSize * 1.4}px;
+              font-weight: bold;
+              color: ${primaryColor};
+            }
+            
+            .footer {
+              margin-top: 50px;
+              display: flex;
+              justify-content: space-between;
+              align-items: end;
+              border-top: 2px solid #e2e8f0;
+              padding-top: 30px;
+            }
+            
+            .print-info {
+              color: #6b7280;
+              font-size: ${baseSize * 0.8}px;
+            }
+            
+            .signature-section {
+              text-align: center;
+            }
+            
+            .signature-title {
+              font-size: ${baseSize * 0.9}px;
+              color: #374151;
+              margin-bottom: 60px;
+            }
+            
+            .signature-name {
+              font-weight: bold;
+              border-top: 2px solid #374151;
+              padding-top: 8px;
+              min-width: 200px;
+              display: inline-block;
+            }
+            
+            @media print {
+              .print-controls {
+                display: none !important;
+              }
+              
+              .container {
+                padding: 15mm;
+              }
+              
+              .year-section {
+                page-break-inside: avoid;
+              }
+              
+              .summary-section {
+                page-break-inside: avoid;
+              }
+            }
+            
+            .no-data {
+              text-align: center;
+              color: #6b7280;
+              font-style: italic;
+              padding: 40px;
+            }
+          </style>
+        </head>
+        <body>
+          <!-- Print Controls Panel -->
+          <div class="print-controls">
+            <h3>📋 Kontrol Cetak</h3>
+            <div class="control-buttons">
+              <button class="control-btn print-btn" onclick="window.print()">
+                🖨️ Cetak Dokumen
+              </button>
+              <button class="control-btn save-btn" onclick="window.print()">
+                💾 Simpan PDF
+              </button>
+              <button class="control-btn close-btn" onclick="window.close()">
+                ❌ Tutup Jendela
+              </button>
+            </div>
+          </div>
+        
+          <div class="container">
+            <!-- Header -->
+            <div class="header">
+              <div class="logo-section">
+                <div class="title">${config.judul_utama || defaultConfig.judul_utama}</div>
+                <div class="subtitle">${config.subjudul || defaultConfig.subjudul}</div>
+              </div>
+            </div>
+            
+            <!-- Document Title -->
+            <div class="document-title">
+              📋 LAPORAN PEMBAYARAN IURAN LENGKAP
+            </div>
+            
+            <!-- Person Information -->
+            <div class="person-info">
+              <div class="info-grid">
+                <div class="info-item">
+                  <span class="info-label">Nama Lengkap</span>
+                  <span class="info-value">: ${personInfo.nama}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">Jabatan</span>
+                  <span class="info-value">: ${personInfo.jabatan}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">Tanggal Cetak</span>
+                  <span class="info-value">: ${formatDate(new Date().toISOString())}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">Total Periode</span>
+                  <span class="info-value">: ${years.length} Tahun</span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Payment Details by Year -->
+            ${years.map(year => {
+              const yearPayments = paymentsByYear[year].sort((a, b) => new Date(a.tanggal_bayar) - new Date(b.tanggal_bayar));
+              const totalLunas = yearPayments.filter(p => p.status_bayar === 'Lunas').length;
+              const totalAmount = yearPayments.reduce((sum, p) => sum + p.total_pembayaran, 0);
+              
+              return `
+                <div class="year-section">
+                  <div class="year-header">
+                    <span>📅 Tahun ${year}</span>
+                    <span class="year-stats">${totalLunas}/${yearPayments.length} Lunas • ${formatCurrency(totalAmount)}</span>
+                  </div>
+                  
+                  ${yearPayments.length > 0 ? `
+                    <table class="payments-table">
+                      <thead>
+                        <tr>
+                          <th style="width: 6%;">No</th>
+                          <th style="width: 15%;">Bulan</th>
+                          <th style="width: 12%;">Tanggal Bayar</th>
+                          <th style="width: 10%;">Status</th>
+                          <th style="width: 12%;">PGRI</th>
+                          <th style="width: 12%;">Bansoso</th>
+                          <th style="width: 12%;">Total</th>
+                          <th style="width: 21%;">Keterangan</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${yearPayments.map((payment, index) => {
+                          // Hitung rincian berdasarkan jabatan
+                          const jabatanLower = personInfo.jabatan.toLowerCase();
+                          let pgriAmount, bansosoAmount;
+                          
+                          if (jabatanLower.includes('kepala sekolah') || jabatanLower.includes('kepsek') || jabatanLower.includes('kepala')) {
+                            pgriAmount = 20000;
+                            bansosoAmount = 5000;
+                          } else {
+                            pgriAmount = 10000;
+                            bansosoAmount = 5000;
+                          }
+                          
+                          return `
+                            <tr>
+                              <td>${index + 1}</td>
+                              <td><strong>${payment.bulan}</strong></td>
+                              <td>${formatDate(payment.tanggal_bayar)}</td>
+                              <td>
+                                <span class="status-badge ${payment.status_bayar === 'Lunas' ? 'status-lunas' : 'status-belum'}">
+                                  ${payment.status_bayar === 'Lunas' ? '✓ Lunas' : '⏳ Belum Lunas'}
+                                </span>
+                              </td>
+                              <td class="amount">${formatCurrency(pgriAmount)}</td>
+                              <td class="amount">${formatCurrency(bansosoAmount)}</td>
+                              <td class="amount" style="font-weight: bold;">${formatCurrency(payment.total_pembayaran)}</td>
+                              <td style="color: #6b7280; font-size: ${baseSize * 0.8}px;">
+                                ${payment.status_bayar === 'Lunas' ? 'Pembayaran selesai' : 'Menunggu pembayaran'}
+                              </td>
+                            </tr>
+                          `;
+                        }).join('')}
+                      </tbody>
+                    </table>
+                  ` : `
+                    <div class="no-data">
+                      Tidak ada data pembayaran untuk tahun ${year}
+                    </div>
+                  `}
+                </div>
+              `;
+            }).join('')}
+            
+            <!-- Summary Section -->
+            <div class="summary-section">
+              <div class="summary-title">📊 RINGKASAN PEMBAYARAN</div>
+              <div class="summary-grid">
+                <div class="summary-card">
+                  <div class="summary-label">Total Pembayaran</div>
+                  <div class="summary-value">${personPayments.length}</div>
+                </div>
+                <div class="summary-card">
+                  <div class="summary-label">Pembayaran Lunas</div>
+                  <div class="summary-value" style="color: #16a34a;">
+                    ${personPayments.filter(p => p.status_bayar === 'Lunas').length}
+                  </div>
+                </div>
+                <div class="summary-card">
+                  <div class="summary-label">Belum Lunas</div>
+                  <div class="summary-value" style="color: #dc2626;">
+                    ${personPayments.filter(p => p.status_bayar === 'Belum Lunas').length}
+                  </div>
+                </div>
+                <div class="summary-card">
+                  <div class="summary-label">Total Terbayar</div>
+                  <div class="summary-value">
+                    ${formatCurrency(personPayments.reduce((sum, p) => sum + p.total_pembayaran, 0))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Footer -->
+            <div class="footer">
+              <div class="print-info">
+                <div>Dicetak pada: ${new Date().toLocaleString('id-ID')}</div>
+                <div>Sistem Informasi Iuran PGRI</div>
+              </div>
+              
+              <div class="signature-section">
+                <div class="signature-title">Singkep Selatan, ${formatDate(new Date().toISOString())}</div>
+                <div class="signature-title">Bendahara PGRI</div>
+                <div class="signature-name">
+                  (&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)
+                </div>
+              </div>
+            </div>
+          </div>
+        </body>
+        </html>`;
+      
+      // Open new window and write content
+      const printWindow = window.open('', '_blank', 'width=900,height=700,scrollbars=yes,resizable=yes');
+      if (!printWindow) {
+        showToast('Pop-up diblokir! Izinkan pop-up untuk mencetak', 'error');
+        return;
+      }
+      
+      printWindow.document.open();
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      
+      // Focus the new window
+      printWindow.focus();
+      
+      showToast('Jendela cetak berhasil dibuka! Gunakan tombol kontrol untuk mencetak atau menutup.', 'success');
+    }
+
+    function showModal() {
+      const passwordModal = document.getElementById('passwordModal');
+      if (passwordModal) {
+        passwordModal.classList.remove('hidden');
+      }
+    }
+
+    function showAddModal() {
+      const modal = document.getElementById('addModal');
+      if (modal) {
+        modal.classList.remove('hidden');
+      }
+    }
+
+    function closePasswordModal() {
+      const modal = document.getElementById('passwordModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        document.getElementById('passwordForm').reset();
+      }
+    }
+
+    function handlePasswordSubmit(event) {
+      event.preventDefault();
+      const password = event.target.password.value;
+      
+      if (password === '4dminPGRI') {
+        closePasswordModal();
+        showAddModal();
+      } else {
+        showToast('Password salah!', 'error');
+        event.target.reset();
+      }
+    }
+
+    function closeModal() {
+      const modal = document.getElementById('addModal');
+      if (modal) {
+        modal.classList.add('hidden');
+        // Reset to manual tab when closing
+        switchTab('manual');
+        // Clear CSV data
+        csvData = [];
+        const csvPreview = document.getElementById('csvPreview');
+        if (csvPreview) {
+          csvPreview.classList.add('hidden');
+        }
+        // Reset form
+        const forms = modal.querySelectorAll('form');
+        forms.forEach(form => form.reset());
+      }
+    }
+
+    function switchTab(tabName) {
+      currentTab = tabName;
+      
+      // Update tab buttons
+      const manualTab = document.getElementById('manualTab');
+      const csvTab = document.getElementById('csvTab');
+      const manualContent = document.getElementById('manualContent');
+      const csvContent = document.getElementById('csvContent');
+      
+      const config = window.elementSdk?.config || defaultConfig;
+      const primaryColor = config.primary_color || defaultConfig.primary_color;
+      const backgroundColor = config.background_color || defaultConfig.background_color;
+      
+      if (tabName === 'manual') {
+        // Manual tab active
+        if (manualTab) {
+          manualTab.style.color = primaryColor;
+          manualTab.style.borderColor = primaryColor;
+          manualTab.style.backgroundColor = backgroundColor;
+        }
+        if (csvTab) {
+          csvTab.style.color = '#6b7280';
+          csvTab.style.borderColor = 'transparent';
+          csvTab.style.backgroundColor = 'transparent';
+        }
+        
+        if (manualContent) manualContent.classList.remove('hidden');
+        if (csvContent) csvContent.classList.add('hidden');
+      } else {
+        // CSV tab active
+        if (csvTab) {
+          csvTab.style.color = primaryColor;
+          csvTab.style.borderColor = primaryColor;
+          csvTab.style.backgroundColor = backgroundColor;
+        }
+        if (manualTab) {
+          manualTab.style.color = '#6b7280';
+          manualTab.style.borderColor = 'transparent';
+          manualTab.style.backgroundColor = 'transparent';
+        }
+        
+        if (csvContent) csvContent.classList.remove('hidden');
+        if (manualContent) manualContent.classList.add('hidden');
+      }
+    }
+
+    function downloadCSVTemplate() {
+      const csvContent = `nama,jabatan,bulan,tahun,tanggal_bayar,status_bayar,total_pembayaran
+Contoh Nama,Guru Matematika,Januari,2024,2024-01-10,Lunas,15000
+Contoh Nama 2,Kepala Sekolah,Februari,2024,2024-02-10,Belum Lunas,25000`;
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      
+      if (link.download !== undefined) {
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', 'template_iuran_pgri.csv');
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        showToast('Template CSV berhasil didownload! Silakan isi data sesuai format.', 'success');
+      } else {
+        showToast('Browser tidak mendukung download otomatis', 'error');
+      }
+    }
+
+    function parseCSV(text) {
+      const lines = text.split('\n').filter(line => line.trim() !== '');
+      if (lines.length < 2) {
+        throw new Error('File CSV harus memiliki header dan minimal 1 baris data');
+      }
+
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+      const expectedHeaders = ['nama', 'jabatan', 'bulan', 'tahun', 'tanggal_bayar', 'status_bayar', 'total_pembayaran'];
+      
+      // Validate headers
+      for (const expectedHeader of expectedHeaders) {
+        if (!headers.includes(expectedHeader)) {
+          throw new Error(`Header '${expectedHeader}' tidak ditemukan dalam file CSV`);
+        }
+      }
+
+      const data = [];
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim());
+        if (values.length !== headers.length) {
+          throw new Error(`Baris ${i + 1}: Jumlah kolom tidak sesuai dengan header`);
+        }
+
+        const row = {};
+        headers.forEach((header, index) => {
+          row[header] = values[index];
+        });
+
+        // Validate required fields
+        if (!row.nama || !row.jabatan || !row.bulan || !row.tahun || !row.tanggal_bayar || !row.status_bayar || !row.total_pembayaran) {
+          throw new Error(`Baris ${i + 1}: Ada field yang kosong`);
+        }
+
+        // Validate status_bayar
+        if (row.status_bayar !== 'Lunas' && row.status_bayar !== 'Belum Lunas') {
+          throw new Error(`Baris ${i + 1}: Status bayar harus 'Lunas' atau 'Belum Lunas'`);
+        }
+
+        // Validate total_pembayaran
+        const amount = parseInt(row.total_pembayaran);
+        if (isNaN(amount) || (amount !== 15000 && amount !== 25000)) {
+          throw new Error(`Baris ${i + 1}: Total pembayaran harus 15000 atau 25000`);
+        }
+
+        // Validate date format
+        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+        if (!dateRegex.test(row.tanggal_bayar)) {
+          throw new Error(`Baris ${i + 1}: Format tanggal harus YYYY-MM-DD`);
+        }
+
+        data.push({
+          nama: row.nama,
+          jabatan: row.jabatan,
+          bulan: `${row.bulan} ${row.tahun}`,
+          tanggal_bayar: row.tanggal_bayar,
+          status_bayar: row.status_bayar,
+          total_pembayaran: amount
+        });
+      }
+
+      return data;
+    }
+
+    async function handleCSVUpload(event) {
+      event.preventDefault();
+      
+      const fileInput = event.target.csvFile;
+      const file = fileInput.files[0];
+      
+      if (!file) {
+        showToast('Pilih file CSV terlebih dahulu', 'error');
+        return;
+      }
+
+      if (!file.name.toLowerCase().endsWith('.csv')) {
+        showToast('File harus berformat .csv', 'error');
+        return;
+      }
+
+      try {
+        const text = await file.text();
+        csvData = parseCSV(text);
+        
+        if (csvData.length === 0) {
+          showToast('File CSV tidak memiliki data', 'error');
+          return;
+        }
+
+        if (allData.length + csvData.length > 999) {
+          showToast(`Tidak dapat mengimport ${csvData.length} data. Batas maksimum 999 data akan terlampaui.`, 'error');
+          return;
+        }
+
+        showCSVPreview();
+        showToast(`Berhasil memuat ${csvData.length} baris data. Silakan periksa preview dan konfirmasi.`, 'success');
+        
+      } catch (error) {
+        showToast(`Error parsing CSV: ${error.message}`, 'error');
+        csvData = [];
+      }
+    }
+
+    function showCSVPreview() {
+      const config = window.elementSdk?.config || defaultConfig;
+      const baseSize = config.font_size || defaultConfig.font_size;
+      const primaryColor = config.primary_color || defaultConfig.primary_color;
+      const textColor = config.text_color || defaultConfig.text_color;
+      
+      const csvPreview = document.getElementById('csvPreview');
+      const csvPreviewContent = document.getElementById('csvPreviewContent');
+      const csvSummary = document.getElementById('csvSummary');
+      
+      if (!csvPreview || !csvPreviewContent || !csvSummary) return;
+
+      // Generate summary statistics
+      const totalRecords = csvData.length;
+      const uniquePersons = [...new Set(csvData.map(row => row.nama))].length;
+      const lunasCount = csvData.filter(row => row.status_bayar === 'Lunas').length;
+      const totalAmount = csvData.reduce((sum, row) => sum + row.total_pembayaran, 0);
+
+      // Update summary section
+      csvSummary.innerHTML = `
+        <div class="bg-white p-3 rounded-lg border">
+          <div class="font-semibold text-sm" style="color: ${textColor}; font-size: ${baseSize * 0.8}px;">Total Data</div>
+          <div class="font-bold text-lg" style="color: ${primaryColor}; font-size: ${baseSize * 1.1}px;">${totalRecords}</div>
+        </div>
+        <div class="bg-white p-3 rounded-lg border">
+          <div class="font-semibold text-sm" style="color: ${textColor}; font-size: ${baseSize * 0.8}px;">Orang Unik</div>
+          <div class="font-bold text-lg" style="color: ${primaryColor}; font-size: ${baseSize * 1.1}px;">${uniquePersons}</div>
+        </div>
+        <div class="bg-white p-3 rounded-lg border">
+          <div class="font-semibold text-sm" style="color: ${textColor}; font-size: ${baseSize * 0.8}px;">Status Lunas</div>
+          <div class="font-bold text-lg" style="color: #16a34a; font-size: ${baseSize * 1.1}px;">${lunasCount}</div>
+        </div>
+        <div class="bg-white p-3 rounded-lg border">
+          <div class="font-semibold text-sm" style="color: ${textColor}; font-size: ${baseSize * 0.8}px;">Total Nilai</div>
+          <div class="font-bold text-sm" style="color: ${primaryColor}; font-size: ${baseSize * 0.9}px;">${formatCurrency(totalAmount)}</div>
+        </div>
+      `;
+
+      let previewHTML = `
+        <div class="mb-4 p-4 bg-gradient-to-r from-green-50 to-blue-50 rounded-lg border border-green-200">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              <span class="text-2xl mr-3">✅</span>
+              <div>
+                <p class="font-bold" style="color: ${primaryColor}; font-size: ${baseSize}px;">
+                  Data CSV Valid & Siap Import
+                </p>
+                <p class="text-sm" style="color: #374151; font-size: ${baseSize * 0.85}px;">
+                  ${totalRecords} baris data dari ${uniquePersons} orang berbeda
+                </p>
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="text-sm font-medium" style="color: #6b7280; font-size: ${baseSize * 0.8}px;">Estimasi Waktu Import</div>
+              <div class="font-bold" style="color: ${primaryColor}; font-size: ${baseSize * 0.9}px;">~${Math.ceil(totalRecords / 10)} detik</div>
+            </div>
+          </div>
+        </div>
+        
+        <table class="w-full border-collapse border border-gray-300 text-sm rounded-lg overflow-hidden">
+          <thead>
+            <tr style="background-color: ${primaryColor};">
+              <th class="border border-gray-300 px-3 py-2 text-white text-left" style="font-size: ${baseSize * 0.8}px;">No</th>
+              <th class="border border-gray-300 px-3 py-2 text-white text-left" style="font-size: ${baseSize * 0.8}px;">Nama</th>
+              <th class="border border-gray-300 px-3 py-2 text-white text-left" style="font-size: ${baseSize * 0.8}px;">Jabatan</th>
+              <th class="border border-gray-300 px-3 py-2 text-white text-left" style="font-size: ${baseSize * 0.8}px;">Bulan</th>
+              <th class="border border-gray-300 px-3 py-2 text-white text-left" style="font-size: ${baseSize * 0.8}px;">Tanggal</th>
+              <th class="border border-gray-300 px-3 py-2 text-white text-left" style="font-size: ${baseSize * 0.8}px;">Status</th>
+              <th class="border border-gray-300 px-3 py-2 text-white text-left" style="font-size: ${baseSize * 0.8}px;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      csvData.slice(0, 15).forEach((row, index) => {
+        previewHTML += `
+          <tr class="hover:bg-gray-50 transition-colors">
+            <td class="border border-gray-300 px-3 py-2" style="font-size: ${baseSize * 0.75}px; color: ${textColor};">${index + 1}</td>
+            <td class="border border-gray-300 px-3 py-2 font-medium" style="font-size: ${baseSize * 0.75}px; color: ${textColor};">${row.nama}</td>
+            <td class="border border-gray-300 px-3 py-2" style="font-size: ${baseSize * 0.75}px; color: ${textColor};">${row.jabatan}</td>
+            <td class="border border-gray-300 px-3 py-2" style="font-size: ${baseSize * 0.75}px; color: ${textColor};">${row.bulan}</td>
+            <td class="border border-gray-300 px-3 py-2" style="font-size: ${baseSize * 0.75}px; color: ${textColor};">${formatDate(row.tanggal_bayar)}</td>
+            <td class="border border-gray-300 px-3 py-2" style="font-size: ${baseSize * 0.75}px;">
+              <span class="status-badge ${row.status_bayar === 'Lunas' ? 'status-lunas' : 'status-belum'}">
+                ${row.status_bayar === 'Lunas' ? '✓ Lunas' : '⏳ Belum'}
+              </span>
+            </td>
+            <td class="border border-gray-300 px-3 py-2 font-bold" style="font-size: ${baseSize * 0.75}px; color: ${primaryColor};">
+              ${formatCurrency(row.total_pembayaran)}
+            </td>
+          </tr>
+        `;
+      });
+
+      previewHTML += `
+          </tbody>
+        </table>
+      `;
+
+      if (csvData.length > 15) {
+        previewHTML += `
+          <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-center">
+            <div class="flex items-center justify-center">
+              <span class="text-xl mr-2">📋</span>
+              <p class="font-medium" style="color: #1e40af; font-size: ${baseSize * 0.85}px;">
+                Menampilkan 15 dari ${csvData.length} baris data. 
+                <span class="font-bold">${csvData.length - 15} data lainnya</span> akan diimport bersamaan.
+              </p>
+            </div>
+          </div>
+        `;
+      }
+
+      csvPreviewContent.innerHTML = previewHTML;
+      csvPreview.classList.remove('hidden');
+    }
+
+    async function confirmCSVImport() {
+      if (csvData.length === 0) {
+        showToast('Tidak ada data untuk diimport', 'error');
+        return;
+      }
+
+      isLoading = true;
+      renderApp();
+
+      let successCount = 0;
+      let failedCount = 0;
+
+      for (const row of csvData) {
+        const newData = {
+          id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          nama: row.nama,
+          jabatan: row.jabatan,
+          bulan: row.bulan,
+          tanggal_bayar: row.tanggal_bayar,
+          status_bayar: row.status_bayar,
+          total_pembayaran: row.total_pembayaran,
+          created_at: new Date().toISOString()
+        };
+
+        const result = await window.dataSdk.create(newData);
+        
+        if (result.isOk) {
+          successCount++;
+        } else {
+          failedCount++;
+        }
+      }
+
+      isLoading = false;
+      csvData = [];
+
+      if (successCount === csvData.length + successCount) {
+        closeModal();
+        showToast(`Berhasil mengimport ${successCount} data dari CSV!`, 'success');
+      } else {
+        showToast(`Import selesai: ${successCount} berhasil, ${failedCount} gagal`, failedCount > 0 ? 'error' : 'success');
+        renderApp();
+      }
+    }
+
+    function cancelCSVImport() {
+      csvData = [];
+      const csvPreview = document.getElementById('csvPreview');
+      if (csvPreview) {
+        csvPreview.classList.add('hidden');
+      }
+      showToast('Import CSV dibatalkan', 'success');
+    }
+
+    function selectAllMonths() {
+      const checkboxes = document.querySelectorAll('input[name="bulan_pilihan"]');
+      checkboxes.forEach(checkbox => {
+        checkbox.checked = true;
+      });
+    }
+
+    function clearAllMonths() {
+      const checkboxes = document.querySelectorAll('input[name="bulan_pilihan"]');
+      checkboxes.forEach(checkbox => {
+        checkbox.checked = false;
+      });
+    }
+
+    function showToast(message, type = 'success') {
+      const toast = document.createElement('div');
+      toast.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg text-white z-50 fade-in ${
+        type === 'success' ? 'bg-green-500' : 'bg-red-500'
+      }`;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      
+      setTimeout(() => {
+        toast.remove();
+      }, 3000);
+    }
+
+    function renderApp() {
+      const config = window.elementSdk?.config || defaultConfig;
+      const baseSize = config.font_size || defaultConfig.font_size;
+      const customFont = config.font_family || defaultConfig.font_family;
+      const backgroundColor = config.background_color || defaultConfig.background_color;
+      const cardColor = config.card_color || defaultConfig.card_color;
+      const primaryColor = config.primary_color || defaultConfig.primary_color;
+      const textColor = config.text_color || defaultConfig.text_color;
+      const accentColor = config.accent_color || defaultConfig.accent_color;
+
+      const app = document.getElementById('app');
+      app.style.backgroundColor = backgroundColor;
+      app.style.color = textColor;
+      app.style.fontFamily = `${customFont}, Arial, sans-serif`;
+      app.style.fontSize = `${baseSize}px`;
+
+      app.innerHTML = `
+        <div class="min-h-full p-4 md:p-6 lg:p-8">
+          <!-- Header -->
+          <div class="max-w-7xl mx-auto mb-6 md:mb-8">
+            <!-- Modern Header Card -->
+            <div class="rounded-2xl shadow-xl overflow-hidden mb-6" style="background: linear-gradient(135deg, ${primaryColor}, ${accentColor});">
+              <div class="relative p-6 md:p-8">
+                <!-- Background Pattern -->
+                <div class="absolute inset-0 opacity-10">
+                  <div class="absolute top-0 left-0 w-32 h-32 rounded-full" style="background: white; transform: translate(-50%, -50%);"></div>
+                  <div class="absolute bottom-0 right-0 w-24 h-24 rounded-full" style="background: white; transform: translate(50%, 50%);"></div>
+                </div>
+                
+                <!-- Header Content -->
+                <div class="relative flex flex-col md:flex-row items-center justify-between">
+                  <!-- Left Side - Title -->
+                  <div class="text-center md:text-left mb-4 md:mb-0 flex-1">
+                    <h1 class="font-bold text-white mb-2" style="font-size: ${baseSize * 2.2}px; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">
+                      ${config.judul_utama || defaultConfig.judul_utama}
+                    </h1>
+                    <p class="text-white opacity-90 font-medium" style="font-size: ${baseSize * 1.3}px;">
+                      ${config.subjudul || defaultConfig.subjudul}
+                    </p>
+                    <div class="mt-3 flex flex-wrap gap-2 justify-center md:justify-start">
+                      <span class="px-3 py-1 bg-white bg-opacity-20 rounded-full text-white text-sm font-medium">
+                        📊 Sistem Informasi
+                      </span>
+                      <span class="px-3 py-1 bg-white bg-opacity-20 rounded-full text-white text-sm font-medium">
+                        💰 Iuran Digital
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <!-- Right Side - Logo PGRI -->
+                  <div class="flex-shrink-0">
+                    <div class="flex items-center justify-center">
+                      <img 
+                        src="https://iili.io/KLP6tBp.png" 
+                        alt="Logo PGRI" 
+                        width="100" 
+                        height="100"
+                        class="object-contain drop-shadow-lg"
+                        style="filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2));"
+                        onerror="this.src=''; this.alt='Logo PGRI tidak dapat dimuat'; this.style.display='none';"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Information Banner -->
+            <div class="rounded-xl shadow-lg overflow-hidden mb-6" style="background: linear-gradient(135deg, ${cardColor}, #f8fafc); border-left: 6px solid ${primaryColor};">
+              <div class="relative">
+                <!-- Scrolling Text Container -->
+                <div class="overflow-hidden py-4">
+                  <div class="scrolling-text flex items-center whitespace-nowrap" style="animation: scroll 35s linear infinite;">
+                    <!-- Informasi Pembayaran -->
+                    <span class="flex items-center mx-10">
+                      <span class="text-3xl mr-4 animate-pulse">📅</span>
+                      <span class="font-bold" style="color: ${primaryColor}; font-size: ${baseSize * 1.2}px;">
+                        JADWAL PEMBAYARAN: Setiap Tanggal 10 Bulan Berjalan
+                      </span>
+                    </span>
+                    
+                    <!-- Nominal Iuran -->
+                    <span class="flex items-center mx-10">
+                      <span class="text-3xl mr-4">💰</span>
+                      <span class="font-semibold" style="color: ${textColor}; font-size: ${baseSize * 1.1}px;">
+                        IURAN BULANAN: Guru/Staff Rp 15.000 | Kepala Sekolah Rp 25.000
+                      </span>
+                    </span>
+                    
+                    <!-- Cara Pembayaran -->
+                    <span class="flex items-center mx-10">
+                      <span class="text-3xl mr-4">🏦</span>
+                      <span class="font-semibold" style="color: ${textColor}; font-size: ${baseSize * 1.1}px;">
+                        PEMBAYARAN: Transfer Bank atau Tunai ke Bendahara
+                      </span>
+                    </span>
+                    
+                    <!-- Status Update -->
+                    <span class="flex items-center mx-10">
+                      <span class="text-3xl mr-4">🔄</span>
+                      <span class="font-medium" style="color: #6b7280; font-size: ${baseSize}px;">
+                        Terakhir Diperbarui: ${new Date().toLocaleDateString('id-ID', { 
+                          weekday: 'long',
+                          day: 'numeric', 
+                          month: 'long', 
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })} WIB
+                      </span>
+                    </span>
+                    
+                    <!-- Kontak -->
+                    <span class="flex items-center mx-10">
+                      <span class="text-3xl mr-4">📞</span>
+                      <span class="font-semibold" style="color: ${primaryColor}; font-size: ${baseSize * 1.1}px;">
+                        INFORMASI LEBIH LANJUT: Hubungi Bendahara PGRI
+                      </span>
+                    </span>
+                    
+                    <!-- Rincian Iuran -->
+                    <span class="flex items-center mx-10">
+                      <span class="text-3xl mr-4">📋</span>
+                      <span class="font-semibold" style="color: ${primaryColor}; font-size: ${baseSize * 1.1}px;">
+                        RINCIAN: Guru/Staff (PGRI Rp 10.000 + Bansoso Rp 5.000) | Kepala Sekolah (PGRI Rp 20.000 + Bansoso Rp 5.000)
+                      </span>
+                    </span>
+                    
+                    <!-- Ketentuan -->
+                    <span class="flex items-center mx-10">
+                      <span class="text-3xl mr-4">⚠️</span>
+                      <span class="font-medium" style="color: #dc2626; font-size: ${baseSize}px;">
+                        PENTING: Pembayaran Terlambat Dikenakan Denda Sesuai Ketentuan
+                      </span>
+                    </span>
+                    
+                    <!-- Repeat untuk kontinuitas -->
+                    <span class="flex items-center mx-10">
+                      <span class="text-3xl mr-4 animate-pulse">📅</span>
+                      <span class="font-bold" style="color: ${primaryColor}; font-size: ${baseSize * 1.2}px;">
+                        JADWAL PEMBAYARAN: Setiap Tanggal 10 Bulan Berjalan
+                      </span>
+                    </span>
+                    
+                    <span class="flex items-center mx-10">
+                      <span class="text-3xl mr-4">💰</span>
+                      <span class="font-semibold" style="color: ${textColor}; font-size: ${baseSize * 1.1}px;">
+                        IURAN BULANAN: Rp 50.000 per Anggota
+                      </span>
+                    </span>
+                  </div>
+                </div>
+                
+                <!-- Enhanced Gradient Fade Effects -->
+                <div class="absolute left-0 top-0 bottom-0 w-16 pointer-events-none" style="background: linear-gradient(to right, ${cardColor}, transparent);"></div>
+                <div class="absolute right-0 top-0 bottom-0 w-16 pointer-events-none" style="background: linear-gradient(to left, ${cardColor}, transparent);"></div>
+                
+                <!-- Decorative Elements -->
+                <div class="absolute top-0 left-0 w-full h-1" style="background: linear-gradient(90deg, ${primaryColor}, ${accentColor}, ${primaryColor});"></div>
+                <div class="absolute bottom-0 left-0 w-full h-1" style="background: linear-gradient(90deg, ${primaryColor}, ${accentColor}, ${primaryColor});"></div>
+              </div>
+            </div>
+
+            <!-- Add Button -->
+            <div class="flex justify-end mb-6">
+              <button 
+                onclick="showModal()"
+                class="px-8 py-4 rounded-2xl font-bold shadow-xl transition-all duration-300 hover:shadow-2xl hover:scale-105 hover:-translate-y-1 flex items-center justify-center border-2 border-white border-opacity-20"
+                style="background: linear-gradient(135deg, ${primaryColor}, ${accentColor}); color: white; font-size: ${baseSize * 1.1}px; min-width: 200px;"
+              >
+                <span class="tracking-wide">${config.tombol_tambah || defaultConfig.tombol_tambah}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Year Filter and Sorting -->
+          <div class="max-w-7xl mx-auto mb-4">
+            <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+              <!-- Year Filter -->
+              <div class="flex gap-2">
+                <button 
+                  onclick="changeYear(2024)"
+                  class="px-4 py-2 rounded-lg font-semibold transition-all duration-200 ${selectedYear === 2024 ? 'text-white' : 'border'}"
+                  style="background-color: ${selectedYear === 2024 ? primaryColor : 'transparent'}; color: ${selectedYear === 2024 ? 'white' : textColor}; border-color: ${primaryColor}; font-size: ${baseSize * 0.9}px;"
+                >
+                  2024
+                </button>
+                <button 
+                  onclick="changeYear(2025)"
+                  class="px-4 py-2 rounded-lg font-semibold transition-all duration-200 ${selectedYear === 2025 ? 'text-white' : 'border'}"
+                  style="background-color: ${selectedYear === 2025 ? primaryColor : 'transparent'}; color: ${selectedYear === 2025 ? 'white' : textColor}; border-color: ${primaryColor}; font-size: ${baseSize * 0.9}px;"
+                >
+                  2025
+                </button>
+              </div>
+
+              <!-- Sorting Controls -->
+              <div class="flex items-center gap-2">
+                <span class="font-medium" style="color: ${textColor}; font-size: ${baseSize * 0.9}px;">
+                  Urutkan:
+                </span>
+                <button 
+                  onclick="changeSorting('nama')"
+                  class="px-3 py-1.5 rounded-lg font-medium transition-all duration-200 ${sortBy === 'nama' ? 'text-white' : 'border'}"
+                  style="background-color: ${sortBy === 'nama' ? primaryColor : 'transparent'}; color: ${sortBy === 'nama' ? 'white' : textColor}; border-color: ${primaryColor}; font-size: ${baseSize * 0.8}px;"
+                >
+                  Nama ${sortBy === 'nama' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+                </button>
+                <button 
+                  onclick="changeSorting('jabatan')"
+                  class="px-3 py-1.5 rounded-lg font-medium transition-all duration-200 ${sortBy === 'jabatan' ? 'text-white' : 'border'}"
+                  style="background-color: ${sortBy === 'jabatan' ? primaryColor : 'transparent'}; color: ${sortBy === 'jabatan' ? 'white' : textColor}; border-color: ${primaryColor}; font-size: ${baseSize * 0.8}px;"
+                >
+                  Jabatan ${sortBy === 'jabatan' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Table Container -->
+          <div class="max-w-7xl mx-auto">
+            <div class="rounded-xl shadow-lg overflow-hidden" style="background-color: ${cardColor};">
+              <div class="overflow-x-auto">
+                <table class="w-full">
+                  <thead style="background-color: ${primaryColor};">
+                    <tr>
+                      <th class="px-3 py-3 md:px-4 md:py-4 text-left font-semibold text-white" style="font-size: ${baseSize * 0.9}px;">
+                        ${config.label_no || defaultConfig.label_no}
+                      </th>
+                      <th class="px-3 py-3 md:px-4 md:py-4 text-left font-semibold text-white" style="font-size: ${baseSize * 0.9}px;">
+                        ${config.label_nama || defaultConfig.label_nama}
+                      </th>
+                      <th class="px-3 py-3 md:px-4 md:py-4 text-left font-semibold text-white hidden md:table-cell" style="font-size: ${baseSize * 0.9}px;">
+                        ${config.label_jabatan || defaultConfig.label_jabatan}
+                      </th>
+                      <th class="px-3 py-3 md:px-4 md:py-4 text-left font-semibold text-white" style="font-size: ${baseSize * 0.9}px;">
+                        Kalender ${selectedYear}
+                      </th>
+                      <th class="px-3 py-3 md:px-4 md:py-4 text-left font-semibold text-white hidden lg:table-cell" style="font-size: ${baseSize * 0.9}px;">
+                        ${config.label_total || defaultConfig.label_total}
+                      </th>
+                      <th class="px-3 py-3 md:px-4 md:py-4 text-center font-semibold text-white" style="font-size: ${baseSize * 0.9}px;">
+                        ${config.label_aksi || defaultConfig.label_aksi}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody id="tableBody">
+                    ${(() => {
+                      // Group data by person name
+                      const groupedData = {};
+                      filteredData.forEach(record => {
+                        if (!groupedData[record.nama]) {
+                          groupedData[record.nama] = {
+                            person: record,
+                            payments: []
+                          };
+                        }
+                        groupedData[record.nama].payments.push(record);
+                      });
+
+                      const uniquePersons = Object.keys(groupedData);
+                      
+                      if (uniquePersons.length === 0) {
+                        return `
+                          <tr>
+                            <td colspan="6" class="px-4 py-12 text-center" style="color: ${textColor}; font-size: ${baseSize}px;">
+                              Belum ada data untuk tahun ${selectedYear}. Klik tombol "${config.tombol_tambah || defaultConfig.tombol_tambah}" untuk menambahkan data.
+                            </td>
+                          </tr>
+                        `;
+                      }
+
+                      return uniquePersons.map((personName, index) => {
+                        const personData = groupedData[personName];
+                        const monthlyPayments = getMonthlyPayments(personName, selectedYear);
+                        const totalPaid = personData.payments.reduce((sum, p) => sum + p.total_pembayaran, 0);
+                        const lunasBulan = Object.values(monthlyPayments).filter(p => p && p.status_bayar === 'Lunas').length;
+                        
+                        const months = [
+                          "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+                          "Jul", "Agu", "Sep", "Okt", "Nov", "Des"
+                        ];
+
+                        return `
+                          <tr class="border-b hover:bg-gray-50 transition-colors" style="border-color: #e5e7eb;">
+                            <td class="px-3 py-3 md:px-4 md:py-4" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                              ${index + 1}
+                            </td>
+                            <td class="px-3 py-3 md:px-4 md:py-4" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                              <div class="font-semibold">${personName}</div>
+                              <div class="text-sm md:hidden" style="color: #6b7280; font-size: ${baseSize * 0.8}px;">
+                                ${personData.person.jabatan}
+                              </div>
+                            </td>
+                            <td class="px-3 py-3 md:px-4 md:py-4 hidden md:table-cell" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                              ${personData.person.jabatan}
+                            </td>
+                            <td class="px-3 py-3 md:px-4 md:py-4" style="font-size: ${baseSize * 0.7}px;">
+                              <div class="grid grid-cols-6 gap-1">
+                                ${months.map((month, monthIndex) => {
+                                  const fullMonthName = [
+                                    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+                                    "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+                                  ][monthIndex];
+                                  const payment = monthlyPayments[fullMonthName];
+                                  const isLunas = payment && payment.status_bayar === 'Lunas';
+                                  const isBelumLunas = payment && payment.status_bayar === 'Belum Lunas';
+                                  
+                                  return `
+                                    <div class="text-center p-1 rounded text-xs ${
+                                      isLunas ? 'bg-green-100 text-green-800' : 
+                                      isBelumLunas ? 'bg-red-100 text-red-800' : 
+                                      'bg-gray-100 text-gray-500'
+                                    }" title="${fullMonthName} ${selectedYear}: ${
+                                      isLunas ? 'Lunas' : isBelumLunas ? 'Belum Lunas' : 'Belum Ada Data'
+                                    }">
+                                      ${month}
+                                    </div>
+                                  `;
+                                }).join('')}
+                              </div>
+                              <div class="text-xs mt-2" style="color: #6b7280;">
+                                ${lunasBulan}/12 bulan lunas
+                              </div>
+                              <div class="lg:hidden mt-1 font-semibold" style="color: ${primaryColor}; font-size: ${baseSize * 0.85}px;">
+                                ${formatCurrency(totalPaid)}
+                              </div>
+                            </td>
+                            <td class="px-3 py-3 md:px-4 md:py-4 hidden lg:table-cell font-semibold" style="font-size: ${baseSize * 0.9}px; color: ${primaryColor};">
+                              ${formatCurrency(totalPaid)}
+                            </td>
+                            <td class="px-3 py-3 md:px-4 md:py-4">
+                              <div class="flex flex-col gap-2 justify-center">
+                                <button 
+                                  onclick='showDetailModal("${personName}")'
+                                  class="px-3 py-1.5 rounded-lg text-white font-medium text-sm transition-all duration-200 hover:shadow-md"
+                                  style="background-color: ${primaryColor}; font-size: ${baseSize * 0.8}px;"
+                                >
+                                  Detail
+                                </button>
+                                <button 
+                                  onclick='showEditModal("${personName}")'
+                                  class="px-3 py-1.5 rounded-lg text-white font-medium text-sm transition-all duration-200 hover:shadow-md"
+                                  style="background-color: #f59e0b; font-size: ${baseSize * 0.8}px;"
+                                >
+                                  Edit
+                                </button>
+                                <button 
+                                  onclick='handlePrint("${personName}")'
+                                  class="px-3 py-1.5 rounded-lg text-white font-medium text-sm transition-all duration-200 hover:shadow-md"
+                                  style="background-color: ${accentColor}; font-size: ${baseSize * 0.8}px;"
+                                >
+                                  ${config.tombol_cetak || defaultConfig.tombol_cetak}
+                                </button>
+                                <button 
+                                  onclick='showDeletePersonModal("${personName}")'
+                                  class="px-3 py-1.5 rounded-lg text-white font-medium text-sm transition-all duration-200 hover:shadow-md"
+                                  style="background-color: #dc2626; font-size: ${baseSize * 0.8}px;"
+                                >
+                                  Hapus
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        `;
+                      }).join('');
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Summary Card -->
+            ${(() => {
+              const groupedData = {};
+              filteredData.forEach(record => {
+                if (!groupedData[record.nama]) {
+                  groupedData[record.nama] = [];
+                }
+                groupedData[record.nama].push(record);
+              });
+              
+              const uniquePersons = Object.keys(groupedData).length;
+              const totalLunas = filteredData.filter(r => r.status_bayar === 'Lunas').length;
+              const totalTerkumpul = filteredData.reduce((sum, r) => sum + r.total_pembayaran, 0);
+              
+              return uniquePersons > 0 ? `
+                <div class="mt-6 rounded-xl shadow-lg p-4 md:p-6" style="background-color: ${cardColor};">
+                  <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="text-center p-4 rounded-lg" style="background-color: ${backgroundColor};">
+                      <div class="font-semibold mb-1" style="color: ${textColor}; font-size: ${baseSize * 0.9}px;">Total Anggota</div>
+                      <div class="font-bold" style="color: ${primaryColor}; font-size: ${baseSize * 1.5}px;">${uniquePersons}</div>
+                    </div>
+                    <div class="text-center p-4 rounded-lg" style="background-color: ${backgroundColor};">
+                      <div class="font-semibold mb-1" style="color: ${textColor}; font-size: ${baseSize * 0.9}px;">Pembayaran Lunas</div>
+                      <div class="font-bold" style="color: #16a34a; font-size: ${baseSize * 1.5}px;">
+                        ${totalLunas}
+                      </div>
+                    </div>
+                    <div class="text-center p-4 rounded-lg" style="background-color: ${backgroundColor};">
+                      <div class="font-semibold mb-1" style="color: ${textColor}; font-size: ${baseSize * 0.9}px;">Tahun Aktif</div>
+                      <div class="font-bold" style="color: ${primaryColor}; font-size: ${baseSize * 1.5}px;">${selectedYear}</div>
+                    </div>
+                    <div class="text-center p-4 rounded-lg" style="background-color: ${backgroundColor};">
+                      <div class="font-semibold mb-1" style="color: ${textColor}; font-size: ${baseSize * 0.9}px;">Total Terkumpul</div>
+                      <div class="font-bold" style="color: ${primaryColor}; font-size: ${baseSize * 1.2}px;">
+                        ${formatCurrency(totalTerkumpul)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ` : '';
+            })()}
+          </div>
+
+          <!-- Password Modal -->
+          <div id="passwordModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div class="rounded-xl shadow-2xl max-w-sm w-full" style="background-color: ${cardColor};">
+              <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                  <h2 class="font-bold" style="font-size: ${baseSize * 1.5}px; color: ${primaryColor};">
+                    Masukkan Password
+                  </h2>
+                  <button 
+                    onclick="closePasswordModal()"
+                    class="text-gray-500 hover:text-gray-700 text-2xl font-bold"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <form id="passwordForm" onsubmit="handlePasswordSubmit(event)" class="space-y-4">
+                  <div>
+                    <label class="block font-semibold mb-2" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                      Password Admin
+                    </label>
+                    <input 
+                      type="password" 
+                      name="password" 
+                      required
+                      class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2"
+                      style="border-color: #d1d5db; font-size: ${baseSize}px; color: ${textColor};"
+                      placeholder="Masukkan password"
+                    />
+                  </div>
+
+                  <div class="flex gap-3 pt-4">
+                    <button 
+                      type="button"
+                      onclick="closePasswordModal()"
+                      class="flex-1 px-4 py-2 border rounded-lg font-semibold transition-colors"
+                      style="border-color: #d1d5db; color: ${textColor}; font-size: ${baseSize}px;"
+                    >
+                      Batal
+                    </button>
+                    <button 
+                      type="submit"
+                      class="flex-1 px-4 py-2 rounded-lg text-white font-semibold transition-all duration-200 hover:shadow-lg"
+                      style="background-color: ${primaryColor}; font-size: ${baseSize}px;"
+                    >
+                      Masuk
+                    </button>
+                  </div>
+                  </form>
+                </div>
+
+                <!-- CSV Import Tab -->
+                <div id="csvContent" class="tab-content hidden">
+                  <div class="space-y-6">
+                    <!-- Step-by-step Guide -->
+                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6">
+                      <h3 class="font-bold mb-4 flex items-center" style="color: ${primaryColor}; font-size: ${baseSize * 1.2}px;">
+                        📋 Panduan Import Data CSV
+                      </h3>
+                      <div class="grid md:grid-cols-3 gap-4">
+                        <!-- Step 1 -->
+                        <div class="bg-white rounded-lg p-4 border border-blue-100">
+                          <div class="flex items-center mb-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold mr-3" style="background-color: ${primaryColor}; font-size: ${baseSize * 0.8}px;">
+                              1
+                            </div>
+                            <h4 class="font-bold" style="color: ${primaryColor}; font-size: ${baseSize * 0.9}px;">
+                              Download Template
+                            </h4>
+                          </div>
+                          <p class="text-sm mb-3" style="color: #374151; font-size: ${baseSize * 0.8}px;">
+                            Download template CSV dengan format yang sudah sesuai
+                          </p>
+                          <button 
+                            type="button"
+                            onclick="downloadCSVTemplate()"
+                            class="w-full px-4 py-2 rounded-lg text-white font-semibold transition-all duration-200 hover:shadow-lg flex items-center justify-center"
+                            style="background-color: ${accentColor}; font-size: ${baseSize * 0.85}px;"
+                          >
+                            📥 Download Template
+                          </button>
+                        </div>
+
+                        <!-- Step 2 -->
+                        <div class="bg-white rounded-lg p-4 border border-green-100">
+                          <div class="flex items-center mb-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold mr-3" style="background-color: #16a34a; font-size: ${baseSize * 0.8}px;">
+                              2
+                            </div>
+                            <h4 class="font-bold" style="color: #16a34a; font-size: ${baseSize * 0.9}px;">
+                              Isi Data
+                            </h4>
+                          </div>
+                          <p class="text-sm mb-3" style="color: #374151; font-size: ${baseSize * 0.8}px;">
+                            Buka file template dan isi data sesuai format yang disediakan
+                          </p>
+                          <div class="bg-green-50 p-2 rounded text-xs" style="color: #166534; font-size: ${baseSize * 0.75}px;">
+                            ✓ Gunakan Excel atau Google Sheets<br>
+                            ✓ Jangan ubah nama kolom<br>
+                            ✓ Simpan sebagai .csv
+                          </div>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div class="bg-white rounded-lg p-4 border border-purple-100">
+                          <div class="flex items-center mb-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold mr-3" style="background-color: #7c3aed; font-size: ${baseSize * 0.8}px;">
+                              3
+                            </div>
+                            <h4 class="font-bold" style="color: #7c3aed; font-size: ${baseSize * 0.9}px;">
+                              Upload & Import
+                            </h4>
+                          </div>
+                          <p class="text-sm mb-3" style="color: #374151; font-size: ${baseSize * 0.8}px;">
+                            Upload file CSV yang sudah diisi dan konfirmasi import
+                          </p>
+                          <div class="bg-purple-50 p-2 rounded text-xs" style="color: #6b21a8; font-size: ${baseSize * 0.75}px;">
+                            ✓ Preview data sebelum import<br>
+                            ✓ Validasi otomatis<br>
+                            ✓ Import batch data
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Upload Section -->
+                    <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                      <h4 class="font-bold mb-4 flex items-center" style="color: ${primaryColor}; font-size: ${baseSize * 1.1}px;">
+                        📤 Upload File CSV
+                      </h4>
+                      
+                      <form onsubmit="handleCSVUpload(event)" class="space-y-4">
+                        <div>
+                          <label class="block font-semibold mb-2" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                            Pilih File CSV
+                          </label>
+                          <div class="relative">
+                            <input 
+                              type="file" 
+                              name="csvFile" 
+                              accept=".csv"
+                              required
+                              class="w-full px-4 py-3 border-2 border-dashed rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 hover:border-gray-400"
+                              style="border-color: #d1d5db; font-size: ${baseSize}px; color: ${textColor};"
+                            />
+                            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <div class="text-center" style="color: #6b7280;">
+                                <div class="text-2xl mb-2">📁</div>
+                                <div style="font-size: ${baseSize * 0.9}px;">Klik untuk memilih file atau drag & drop</div>
+                              </div>
+                            </div>
+                          </div>
+                          <p class="text-sm mt-2 flex items-center" style="color: #6b7280; font-size: ${baseSize * 0.8}px;">
+                            <span class="mr-2">ℹ️</span>
+                            Hanya file .csv yang diperbolehkan (maksimal 999 baris data)
+                          </p>
+                        </div>
+
+                        <!-- Format Requirements -->
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                          <h5 class="font-bold mb-3 flex items-center" style="color: #92400e; font-size: ${baseSize * 0.9}px;">
+                            ⚠️ Persyaratan Format CSV
+                          </h5>
+                          <div class="grid md:grid-cols-2 gap-3 text-sm" style="color: #92400e; font-size: ${baseSize * 0.8}px;">
+                            <div class="space-y-1">
+                              <div><strong>• nama:</strong> Nama Lengkap</div>
+                              <div><strong>• jabatan:</strong> Jabatan/Posisi</div>
+                              <div><strong>• bulan:</strong> Januari, Februari, dll</div>
+                              <div><strong>• tahun:</strong> 2024, 2025, dll</div>
+                            </div>
+                            <div class="space-y-1">
+                              <div><strong>• tanggal_bayar:</strong> YYYY-MM-DD</div>
+                              <div><strong>• status_bayar:</strong> Lunas / Belum Lunas</div>
+                              <div><strong>• total_pembayaran:</strong> 15000 / 25000</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="flex gap-3">
+                          <button 
+                            type="submit"
+                            class="flex-1 px-6 py-3 rounded-lg text-white font-semibold transition-all duration-200 hover:shadow-lg flex items-center justify-center"
+                            style="background-color: ${primaryColor}; font-size: ${baseSize}px;"
+                            ${isLoading ? 'disabled' : ''}
+                          >
+                            ${isLoading ? '⏳ Memproses...' : '📤 Upload & Validasi Data'}
+                          </button>
+                          <button 
+                            type="button"
+                            onclick="switchTab('manual')"
+                            class="px-6 py-3 border rounded-lg font-semibold transition-colors hover:bg-gray-50"
+                            style="border-color: #d1d5db; color: ${textColor}; font-size: ${baseSize}px;"
+                          >
+                            ← Kembali ke Manual
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+
+                    <!-- Preview Section -->
+                    <div id="csvPreview" class="hidden bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                      <div class="flex items-center justify-between mb-4">
+                        <h4 class="font-bold flex items-center" style="color: ${primaryColor}; font-size: ${baseSize * 1.1}px;">
+                          👀 Preview Data CSV
+                        </h4>
+                        <div class="flex items-center space-x-2">
+                          <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+                          <span class="text-sm font-medium" style="color: #16a34a; font-size: ${baseSize * 0.8}px;">
+                            Data Valid & Siap Import
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div id="csvPreviewContent" class="overflow-x-auto mb-4">
+                        <!-- Preview content will be populated here -->
+                      </div>
+                      
+                      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                        <div class="flex items-center mb-2">
+                          <span class="text-2xl mr-3">📊</span>
+                          <h5 class="font-bold" style="color: ${primaryColor}; font-size: ${baseSize * 0.9}px;">
+                            Ringkasan Import
+                          </h5>
+                        </div>
+                        <div id="csvSummary" class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                          <!-- Summary will be populated by JavaScript -->
+                        </div>
+                      </div>
+                      
+                      <div class="flex gap-3">
+                        <button 
+                          type="button"
+                          onclick="confirmCSVImport()"
+                          class="flex-1 px-6 py-3 rounded-lg text-white font-semibold transition-all duration-200 hover:shadow-lg flex items-center justify-center"
+                          style="background-color: #16a34a; font-size: ${baseSize}px;"
+                          ${isLoading ? 'disabled' : ''}
+                        >
+                          ${isLoading ? '⏳ Mengimport...' : '✅ Konfirmasi & Import Data'}
+                        </button>
+                        <button 
+                          type="button"
+                          onclick="cancelCSVImport()"
+                          class="px-6 py-3 border rounded-lg font-semibold transition-colors hover:bg-gray-50"
+                          style="border-color: #d1d5db; color: ${textColor}; font-size: ${baseSize}px;"
+                        >
+                          ❌ Batal Import
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Detail Modal -->
+          <div id="detailModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div class="rounded-xl shadow-2xl max-w-4xl w-full max-h-[90%] overflow-y-auto" style="background-color: ${cardColor};">
+              <div id="detailModalContent" class="p-6">
+                <!-- Content will be populated by updateDetailModalContent -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Edit Modal -->
+          <div id="editModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div class="rounded-xl shadow-2xl max-w-md w-full" style="background-color: ${cardColor};">
+              <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                  <h2 class="font-bold" style="font-size: ${baseSize * 1.5}px; color: ${primaryColor};">
+                    Edit Nama & Jabatan
+                  </h2>
+                  <button 
+                    onclick="closeEditModal()"
+                    class="text-gray-500 hover:text-gray-700 text-2xl font-bold"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <form id="editForm" onsubmit="handleEditSubmit(event)" class="space-y-4">
+                  <input type="hidden" id="editPersonName" name="oldName" />
+                  
+                  <div>
+                    <label class="block font-semibold mb-2" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                      Nama Lengkap
+                    </label>
+                    <input 
+                      type="text" 
+                      id="editNama"
+                      name="nama" 
+                      required
+                      class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2"
+                      style="border-color: #d1d5db; font-size: ${baseSize}px; color: ${textColor};"
+                      placeholder="Masukkan nama lengkap"
+                    />
+                  </div>
+
+                  <div>
+                    <label class="block font-semibold mb-2" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                      Jabatan
+                    </label>
+                    <input 
+                      type="text" 
+                      id="editJabatan"
+                      name="jabatan" 
+                      required
+                      class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2"
+                      style="border-color: #d1d5db; font-size: ${baseSize}px; color: ${textColor};"
+                      placeholder="Contoh: Guru Matematika"
+                    />
+                  </div>
+
+                  <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mt-4">
+                    <p class="text-sm" style="color: #92400e; font-size: ${baseSize * 0.85}px;">
+                      <strong>Perhatian:</strong> Perubahan ini akan mempengaruhi semua data pembayaran untuk orang ini.
+                    </p>
+                  </div>
+
+                  <div class="flex gap-3 pt-4">
+                    <button 
+                      type="button"
+                      onclick="closeEditModal()"
+                      class="flex-1 px-4 py-2 border rounded-lg font-semibold transition-colors"
+                      style="border-color: #d1d5db; color: ${textColor}; font-size: ${baseSize}px;"
+                    >
+                      Batal
+                    </button>
+                    <button 
+                      type="submit"
+                      class="flex-1 px-4 py-2 rounded-lg text-white font-semibold transition-all duration-200 hover:shadow-lg"
+                      style="background-color: #f59e0b; font-size: ${baseSize}px;"
+                      ${isLoading ? 'disabled' : ''}
+                    >
+                      ${isLoading ? 'Menyimpan...' : 'Update'}
+                    </button>
+                  </div>
+                  </form>
+                </div>
+
+                <!-- CSV Import Tab -->
+                <div id="csvContent" class="tab-content hidden">
+                  <div class="space-y-6">
+                    <!-- Step-by-step Guide -->
+                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6">
+                      <h3 class="font-bold mb-4 flex items-center" style="color: ${primaryColor}; font-size: ${baseSize * 1.2}px;">
+                        📋 Panduan Import Data CSV
+                      </h3>
+                      <div class="grid md:grid-cols-3 gap-4">
+                        <!-- Step 1 -->
+                        <div class="bg-white rounded-lg p-4 border border-blue-100">
+                          <div class="flex items-center mb-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold mr-3" style="background-color: ${primaryColor}; font-size: ${baseSize * 0.8}px;">
+                              1
+                            </div>
+                            <h4 class="font-bold" style="color: ${primaryColor}; font-size: ${baseSize * 0.9}px;">
+                              Download Template
+                            </h4>
+                          </div>
+                          <p class="text-sm mb-3" style="color: #374151; font-size: ${baseSize * 0.8}px;">
+                            Download template CSV dengan format yang sudah sesuai
+                          </p>
+                          <button 
+                            type="button"
+                            onclick="downloadCSVTemplate()"
+                            class="w-full px-4 py-2 rounded-lg text-white font-semibold transition-all duration-200 hover:shadow-lg flex items-center justify-center"
+                            style="background-color: ${accentColor}; font-size: ${baseSize * 0.85}px;"
+                          >
+                            📥 Download Template
+                          </button>
+                        </div>
+
+                        <!-- Step 2 -->
+                        <div class="bg-white rounded-lg p-4 border border-green-100">
+                          <div class="flex items-center mb-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold mr-3" style="background-color: #16a34a; font-size: ${baseSize * 0.8}px;">
+                              2
+                            </div>
+                            <h4 class="font-bold" style="color: #16a34a; font-size: ${baseSize * 0.9}px;">
+                              Isi Data
+                            </h4>
+                          </div>
+                          <p class="text-sm mb-3" style="color: #374151; font-size: ${baseSize * 0.8}px;">
+                            Buka file template dan isi data sesuai format yang disediakan
+                          </p>
+                          <div class="bg-green-50 p-2 rounded text-xs" style="color: #166534; font-size: ${baseSize * 0.75}px;">
+                            ✓ Gunakan Excel atau Google Sheets<br>
+                            ✓ Jangan ubah nama kolom<br>
+                            ✓ Simpan sebagai .csv
+                          </div>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div class="bg-white rounded-lg p-4 border border-purple-100">
+                          <div class="flex items-center mb-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold mr-3" style="background-color: #7c3aed; font-size: ${baseSize * 0.8}px;">
+                              3
+                            </div>
+                            <h4 class="font-bold" style="color: #7c3aed; font-size: ${baseSize * 0.9}px;">
+                              Upload & Import
+                            </h4>
+                          </div>
+                          <p class="text-sm mb-3" style="color: #374151; font-size: ${baseSize * 0.8}px;">
+                            Upload file CSV yang sudah diisi dan konfirmasi import
+                          </p>
+                          <div class="bg-purple-50 p-2 rounded text-xs" style="color: #6b21a8; font-size: ${baseSize * 0.75}px;">
+                            ✓ Preview data sebelum import<br>
+                            ✓ Validasi otomatis<br>
+                            ✓ Import batch data
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Upload Section -->
+                    <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                      <h4 class="font-bold mb-4 flex items-center" style="color: ${primaryColor}; font-size: ${baseSize * 1.1}px;">
+                        📤 Upload File CSV
+                      </h4>
+                      
+                      <form onsubmit="handleCSVUpload(event)" class="space-y-4">
+                        <div>
+                          <label class="block font-semibold mb-2" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                            Pilih File CSV
+                          </label>
+                          <div class="relative">
+                            <input 
+                              type="file" 
+                              name="csvFile" 
+                              accept=".csv"
+                              required
+                              class="w-full px-4 py-3 border-2 border-dashed rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 hover:border-gray-400"
+                              style="border-color: #d1d5db; font-size: ${baseSize}px; color: ${textColor};"
+                            />
+                            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <div class="text-center" style="color: #6b7280;">
+                                <div class="text-2xl mb-2">📁</div>
+                                <div style="font-size: ${baseSize * 0.9}px;">Klik untuk memilih file atau drag & drop</div>
+                              </div>
+                            </div>
+                          </div>
+                          <p class="text-sm mt-2 flex items-center" style="color: #6b7280; font-size: ${baseSize * 0.8}px;">
+                            <span class="mr-2">ℹ️</span>
+                            Hanya file .csv yang diperbolehkan (maksimal 999 baris data)
+                          </p>
+                        </div>
+
+                        <!-- Format Requirements -->
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                          <h5 class="font-bold mb-3 flex items-center" style="color: #92400e; font-size: ${baseSize * 0.9}px;">
+                            ⚠️ Persyaratan Format CSV
+                          </h5>
+                          <div class="grid md:grid-cols-2 gap-3 text-sm" style="color: #92400e; font-size: ${baseSize * 0.8}px;">
+                            <div class="space-y-1">
+                              <div><strong>• nama:</strong> Nama Lengkap</div>
+                              <div><strong>• jabatan:</strong> Jabatan/Posisi</div>
+                              <div><strong>• bulan:</strong> Januari, Februari, dll</div>
+                              <div><strong>• tahun:</strong> 2024, 2025, dll</div>
+                            </div>
+                            <div class="space-y-1">
+                              <div><strong>• tanggal_bayar:</strong> YYYY-MM-DD</div>
+                              <div><strong>• status_bayar:</strong> Lunas / Belum Lunas</div>
+                              <div><strong>• total_pembayaran:</strong> 15000 / 25000</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="flex gap-3">
+                          <button 
+                            type="submit"
+                            class="flex-1 px-6 py-3 rounded-lg text-white font-semibold transition-all duration-200 hover:shadow-lg flex items-center justify-center"
+                            style="background-color: ${primaryColor}; font-size: ${baseSize}px;"
+                            ${isLoading ? 'disabled' : ''}
+                          >
+                            ${isLoading ? '⏳ Memproses...' : '📤 Upload & Validasi Data'}
+                          </button>
+                          <button 
+                            type="button"
+                            onclick="switchTab('manual')"
+                            class="px-6 py-3 border rounded-lg font-semibold transition-colors hover:bg-gray-50"
+                            style="border-color: #d1d5db; color: ${textColor}; font-size: ${baseSize}px;"
+                          >
+                            ← Kembali ke Manual
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+
+                    <!-- Preview Section -->
+                    <div id="csvPreview" class="hidden bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                      <div class="flex items-center justify-between mb-4">
+                        <h4 class="font-bold flex items-center" style="color: ${primaryColor}; font-size: ${baseSize * 1.1}px;">
+                          👀 Preview Data CSV
+                        </h4>
+                        <div class="flex items-center space-x-2">
+                          <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+                          <span class="text-sm font-medium" style="color: #16a34a; font-size: ${baseSize * 0.8}px;">
+                            Data Valid & Siap Import
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div id="csvPreviewContent" class="overflow-x-auto mb-4">
+                        <!-- Preview content will be populated here -->
+                      </div>
+                      
+                      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                        <div class="flex items-center mb-2">
+                          <span class="text-2xl mr-3">📊</span>
+                          <h5 class="font-bold" style="color: ${primaryColor}; font-size: ${baseSize * 0.9}px;">
+                            Ringkasan Import
+                          </h5>
+                        </div>
+                        <div id="csvSummary" class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                          <!-- Summary will be populated by JavaScript -->
+                        </div>
+                      </div>
+                      
+                      <div class="flex gap-3">
+                        <button 
+                          type="button"
+                          onclick="confirmCSVImport()"
+                          class="flex-1 px-6 py-3 rounded-lg text-white font-semibold transition-all duration-200 hover:shadow-lg flex items-center justify-center"
+                          style="background-color: #16a34a; font-size: ${baseSize}px;"
+                          ${isLoading ? 'disabled' : ''}
+                        >
+                          ${isLoading ? '⏳ Mengimport...' : '✅ Konfirmasi & Import Data'}
+                        </button>
+                        <button 
+                          type="button"
+                          onclick="cancelCSVImport()"
+                          class="px-6 py-3 border rounded-lg font-semibold transition-colors hover:bg-gray-50"
+                          style="border-color: #d1d5db; color: ${textColor}; font-size: ${baseSize}px;"
+                        >
+                          ❌ Batal Import
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Delete Person Modal -->
+          <div id="deletePersonModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div class="rounded-xl shadow-2xl max-w-md w-full" style="background-color: ${cardColor};">
+              <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                  <h2 class="font-bold" style="font-size: ${baseSize * 1.5}px; color: #dc2626;">
+                    Konfirmasi Hapus Data
+                  </h2>
+                  <button 
+                    onclick="closeDeletePersonModal()"
+                    class="text-gray-500 hover:text-gray-700 text-2xl font-bold"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <form id="deletePersonForm" onsubmit="handleDeletePersonSubmit(event)" class="space-y-4">
+                  <input type="hidden" id="deletePersonName" name="personName" />
+                  
+                  <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div class="flex items-start">
+                      <div class="text-red-600 text-2xl mr-3">⚠️</div>
+                      <div>
+                        <h3 class="font-bold text-red-800 mb-2" style="font-size: ${baseSize}px;">
+                          Peringatan Penting!
+                        </h3>
+                        <p class="text-red-700 mb-2" style="font-size: ${baseSize * 0.9}px;">
+                          Anda akan menghapus <strong>SEMUA DATA PEMBAYARAN</strong> untuk:
+                        </p>
+                        <p class="font-bold text-red-800" style="font-size: ${baseSize}px;" id="deletePersonNameDisplay">
+                          <!-- Nama akan diisi oleh JavaScript -->
+                        </p>
+                        <p class="text-red-600 mt-2" style="font-size: ${baseSize * 0.85}px;">
+                          Tindakan ini tidak dapat dibatalkan!
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label class="block font-semibold mb-2" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                      Password Admin (Wajib)
+                    </label>
+                    <input 
+                      type="password" 
+                      name="adminPassword" 
+                      required
+                      class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2"
+                      style="border-color: #d1d5db; font-size: ${baseSize}px; color: ${textColor};"
+                      placeholder="Masukkan password admin"
+                    />
+                  </div>
+
+                  <div>
+                    <label class="block font-semibold mb-2" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                      Konfirmasi dengan mengetik: <span class="text-red-600 font-bold">HAPUS SEMUA</span>
+                    </label>
+                    <input 
+                      type="text" 
+                      name="confirmText" 
+                      required
+                      class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2"
+                      style="border-color: #d1d5db; font-size: ${baseSize}px; color: ${textColor};"
+                      placeholder="Ketik: HAPUS SEMUA"
+                    />
+                  </div>
+
+                  <div class="flex gap-3 pt-4">
+                    <button 
+                      type="button"
+                      onclick="closeDeletePersonModal()"
+                      class="flex-1 px-4 py-2 border rounded-lg font-semibold transition-colors"
+                      style="border-color: #d1d5db; color: ${textColor}; font-size: ${baseSize}px;"
+                    >
+                      Batal
+                    </button>
+                    <button 
+                      type="submit"
+                      class="flex-1 px-4 py-2 rounded-lg text-white font-semibold transition-all duration-200 hover:shadow-lg"
+                      style="background-color: #dc2626; font-size: ${baseSize}px;"
+                      ${isLoading ? 'disabled' : ''}
+                    >
+                      ${isLoading ? 'Menghapus...' : 'Hapus Semua Data'}
+                    </button>
+                  </div>
+                  </form>
+                </div>
+
+                <!-- CSV Import Tab -->
+                <div id="csvContent" class="tab-content hidden">
+                  <div class="space-y-6">
+                    <!-- Step-by-step Guide -->
+                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6">
+                      <h3 class="font-bold mb-4 flex items-center" style="color: ${primaryColor}; font-size: ${baseSize * 1.2}px;">
+                        📋 Panduan Import Data CSV
+                      </h3>
+                      <div class="grid md:grid-cols-3 gap-4">
+                        <!-- Step 1 -->
+                        <div class="bg-white rounded-lg p-4 border border-blue-100">
+                          <div class="flex items-center mb-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold mr-3" style="background-color: ${primaryColor}; font-size: ${baseSize * 0.8}px;">
+                              1
+                            </div>
+                            <h4 class="font-bold" style="color: ${primaryColor}; font-size: ${baseSize * 0.9}px;">
+                              Download Template
+                            </h4>
+                          </div>
+                          <p class="text-sm mb-3" style="color: #374151; font-size: ${baseSize * 0.8}px;">
+                            Download template CSV dengan format yang sudah sesuai
+                          </p>
+                          <button 
+                            type="button"
+                            onclick="downloadCSVTemplate()"
+                            class="w-full px-4 py-2 rounded-lg text-white font-semibold transition-all duration-200 hover:shadow-lg flex items-center justify-center"
+                            style="background-color: ${accentColor}; font-size: ${baseSize * 0.85}px;"
+                          >
+                            📥 Download Template
+                          </button>
+                        </div>
+
+                        <!-- Step 2 -->
+                        <div class="bg-white rounded-lg p-4 border border-green-100">
+                          <div class="flex items-center mb-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold mr-3" style="background-color: #16a34a; font-size: ${baseSize * 0.8}px;">
+                              2
+                            </div>
+                            <h4 class="font-bold" style="color: #16a34a; font-size: ${baseSize * 0.9}px;">
+                              Isi Data
+                            </h4>
+                          </div>
+                          <p class="text-sm mb-3" style="color: #374151; font-size: ${baseSize * 0.8}px;">
+                            Buka file template dan isi data sesuai format yang disediakan
+                          </p>
+                          <div class="bg-green-50 p-2 rounded text-xs" style="color: #166534; font-size: ${baseSize * 0.75}px;">
+                            ✓ Gunakan Excel atau Google Sheets<br>
+                            ✓ Jangan ubah nama kolom<br>
+                            ✓ Simpan sebagai .csv
+                          </div>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div class="bg-white rounded-lg p-4 border border-purple-100">
+                          <div class="flex items-center mb-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold mr-3" style="background-color: #7c3aed; font-size: ${baseSize * 0.8}px;">
+                              3
+                            </div>
+                            <h4 class="font-bold" style="color: #7c3aed; font-size: ${baseSize * 0.9}px;">
+                              Upload & Import
+                            </h4>
+                          </div>
+                          <p class="text-sm mb-3" style="color: #374151; font-size: ${baseSize * 0.8}px;">
+                            Upload file CSV yang sudah diisi dan konfirmasi import
+                          </p>
+                          <div class="bg-purple-50 p-2 rounded text-xs" style="color: #6b21a8; font-size: ${baseSize * 0.75}px;">
+                            ✓ Preview data sebelum import<br>
+                            ✓ Validasi otomatis<br>
+                            ✓ Import batch data
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Upload Section -->
+                    <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                      <h4 class="font-bold mb-4 flex items-center" style="color: ${primaryColor}; font-size: ${baseSize * 1.1}px;">
+                        📤 Upload File CSV
+                      </h4>
+                      
+                      <form onsubmit="handleCSVUpload(event)" class="space-y-4">
+                        <div>
+                          <label class="block font-semibold mb-2" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                            Pilih File CSV
+                          </label>
+                          <div class="relative">
+                            <input 
+                              type="file" 
+                              name="csvFile" 
+                              accept=".csv"
+                              required
+                              class="w-full px-4 py-3 border-2 border-dashed rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 hover:border-gray-400"
+                              style="border-color: #d1d5db; font-size: ${baseSize}px; color: ${textColor};"
+                            />
+                            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <div class="text-center" style="color: #6b7280;">
+                                <div class="text-2xl mb-2">📁</div>
+                                <div style="font-size: ${baseSize * 0.9}px;">Klik untuk memilih file atau drag & drop</div>
+                              </div>
+                            </div>
+                          </div>
+                          <p class="text-sm mt-2 flex items-center" style="color: #6b7280; font-size: ${baseSize * 0.8}px;">
+                            <span class="mr-2">ℹ️</span>
+                            Hanya file .csv yang diperbolehkan (maksimal 999 baris data)
+                          </p>
+                        </div>
+
+                        <!-- Format Requirements -->
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                          <h5 class="font-bold mb-3 flex items-center" style="color: #92400e; font-size: ${baseSize * 0.9}px;">
+                            ⚠️ Persyaratan Format CSV
+                          </h5>
+                          <div class="grid md:grid-cols-2 gap-3 text-sm" style="color: #92400e; font-size: ${baseSize * 0.8}px;">
+                            <div class="space-y-1">
+                              <div><strong>• nama:</strong> Nama Lengkap</div>
+                              <div><strong>• jabatan:</strong> Jabatan/Posisi</div>
+                              <div><strong>• bulan:</strong> Januari, Februari, dll</div>
+                              <div><strong>• tahun:</strong> 2024, 2025, dll</div>
+                            </div>
+                            <div class="space-y-1">
+                              <div><strong>• tanggal_bayar:</strong> YYYY-MM-DD</div>
+                              <div><strong>• status_bayar:</strong> Lunas / Belum Lunas</div>
+                              <div><strong>• total_pembayaran:</strong> 15000 / 25000</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="flex gap-3">
+                          <button 
+                            type="submit"
+                            class="flex-1 px-6 py-3 rounded-lg text-white font-semibold transition-all duration-200 hover:shadow-lg flex items-center justify-center"
+                            style="background-color: ${primaryColor}; font-size: ${baseSize}px;"
+                            ${isLoading ? 'disabled' : ''}
+                          >
+                            ${isLoading ? '⏳ Memproses...' : '📤 Upload & Validasi Data'}
+                          </button>
+                          <button 
+                            type="button"
+                            onclick="switchTab('manual')"
+                            class="px-6 py-3 border rounded-lg font-semibold transition-colors hover:bg-gray-50"
+                            style="border-color: #d1d5db; color: ${textColor}; font-size: ${baseSize}px;"
+                          >
+                            ← Kembali ke Manual
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+
+                    <!-- Preview Section -->
+                    <div id="csvPreview" class="hidden bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                      <div class="flex items-center justify-between mb-4">
+                        <h4 class="font-bold flex items-center" style="color: ${primaryColor}; font-size: ${baseSize * 1.1}px;">
+                          👀 Preview Data CSV
+                        </h4>
+                        <div class="flex items-center space-x-2">
+                          <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+                          <span class="text-sm font-medium" style="color: #16a34a; font-size: ${baseSize * 0.8}px;">
+                            Data Valid & Siap Import
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div id="csvPreviewContent" class="overflow-x-auto mb-4">
+                        <!-- Preview content will be populated here -->
+                      </div>
+                      
+                      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                        <div class="flex items-center mb-2">
+                          <span class="text-2xl mr-3">📊</span>
+                          <h5 class="font-bold" style="color: ${primaryColor}; font-size: ${baseSize * 0.9}px;">
+                            Ringkasan Import
+                          </h5>
+                        </div>
+                        <div id="csvSummary" class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                          <!-- Summary will be populated by JavaScript -->
+                        </div>
+                      </div>
+                      
+                      <div class="flex gap-3">
+                        <button 
+                          type="button"
+                          onclick="confirmCSVImport()"
+                          class="flex-1 px-6 py-3 rounded-lg text-white font-semibold transition-all duration-200 hover:shadow-lg flex items-center justify-center"
+                          style="background-color: #16a34a; font-size: ${baseSize}px;"
+                          ${isLoading ? 'disabled' : ''}
+                        >
+                          ${isLoading ? '⏳ Mengimport...' : '✅ Konfirmasi & Import Data'}
+                        </button>
+                        <button 
+                          type="button"
+                          onclick="cancelCSVImport()"
+                          class="px-6 py-3 border rounded-lg font-semibold transition-colors hover:bg-gray-50"
+                          style="border-color: #d1d5db; color: ${textColor}; font-size: ${baseSize}px;"
+                        >
+                          ❌ Batal Import
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Add Data Modal -->
+          <div id="addModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div class="rounded-xl shadow-2xl max-w-4xl w-full max-h-[90%] overflow-y-auto" style="background-color: ${cardColor};">
+              <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                  <h2 class="font-bold" style="font-size: ${baseSize * 1.5}px; color: ${primaryColor};">
+                    Tambah Data Iuran
+                  </h2>
+                  <button 
+                    onclick="closeModal()"
+                    class="text-gray-500 hover:text-gray-700 text-2xl font-bold"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <!-- Tab Navigation -->
+                <div class="flex mb-6 border-b" style="border-color: #e5e7eb;">
+                  <button 
+                    id="manualTab"
+                    onclick="switchTab('manual')"
+                    class="px-6 py-3 font-semibold border-b-2 transition-colors rounded-t-lg"
+                    style="color: ${primaryColor}; border-color: ${primaryColor}; font-size: ${baseSize * 0.9}px; background-color: ${backgroundColor};"
+                  >
+                    📝 Input Manual
+                  </button>
+                  <button 
+                    id="csvTab"
+                    onclick="switchTab('csv')"
+                    class="px-6 py-3 font-semibold border-b-2 border-transparent transition-colors hover:border-gray-300 rounded-t-lg"
+                    style="color: #6b7280; font-size: ${baseSize * 0.9}px;"
+                  >
+                    📊 Import CSV
+                  </button>
+                </div>
+
+                <!-- Manual Input Tab -->
+                <div id="manualContent" class="tab-content">
+                  <form onsubmit="handleAddData(event)" class="space-y-4">
+                  <div>
+                    <label class="block font-semibold mb-2" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                      Nama Lengkap
+                    </label>
+                    <input 
+                      type="text" 
+                      name="nama" 
+                      required
+                      class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2"
+                      style="border-color: #d1d5db; font-size: ${baseSize}px; color: ${textColor};"
+                      placeholder="Masukkan nama lengkap"
+                    />
+                  </div>
+
+                  <div>
+                    <label class="block font-semibold mb-2" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                      Jabatan
+                    </label>
+                    <input 
+                      type="text" 
+                      name="jabatan" 
+                      required
+                      class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2"
+                      style="border-color: #d1d5db; font-size: ${baseSize}px; color: ${textColor};"
+                      placeholder="Contoh: Guru Matematika"
+                    />
+                  </div>
+
+                  <div>
+                    <label class="block font-semibold mb-2" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                      Tahun
+                    </label>
+                    <select 
+                      name="tahun" 
+                      required
+                      class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2"
+                      style="border-color: #d1d5db; font-size: ${baseSize}px; color: ${textColor};"
+                    >
+                      <option value="">Pilih Tahun</option>
+                      <option value="2023">2023</option>
+                      <option value="2024" selected>2024</option>
+                      <option value="2025">2025</option>
+                      <option value="2026">2026</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label class="block font-semibold mb-2" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                      Pilih Bulan (Bisa lebih dari satu)
+                    </label>
+                    <div class="border rounded-lg p-3" style="border-color: #d1d5db; max-height: 200px; overflow-y: auto;">
+                      <div class="grid grid-cols-2 gap-2">
+                        <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50">
+                          <input type="checkbox" name="bulan_pilihan" value="Januari" class="rounded">
+                          <span style="font-size: ${baseSize * 0.9}px; color: ${textColor};">Januari</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50">
+                          <input type="checkbox" name="bulan_pilihan" value="Februari" class="rounded">
+                          <span style="font-size: ${baseSize * 0.9}px; color: ${textColor};">Februari</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50">
+                          <input type="checkbox" name="bulan_pilihan" value="Maret" class="rounded">
+                          <span style="font-size: ${baseSize * 0.9}px; color: ${textColor};">Maret</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50">
+                          <input type="checkbox" name="bulan_pilihan" value="April" class="rounded">
+                          <span style="font-size: ${baseSize * 0.9}px; color: ${textColor};">April</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50">
+                          <input type="checkbox" name="bulan_pilihan" value="Mei" class="rounded">
+                          <span style="font-size: ${baseSize * 0.9}px; color: ${textColor};">Mei</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50">
+                          <input type="checkbox" name="bulan_pilihan" value="Juni" class="rounded">
+                          <span style="font-size: ${baseSize * 0.9}px; color: ${textColor};">Juni</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50">
+                          <input type="checkbox" name="bulan_pilihan" value="Juli" class="rounded">
+                          <span style="font-size: ${baseSize * 0.9}px; color: ${textColor};">Juli</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50">
+                          <input type="checkbox" name="bulan_pilihan" value="Agustus" class="rounded">
+                          <span style="font-size: ${baseSize * 0.9}px; color: ${textColor};">Agustus</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50">
+                          <input type="checkbox" name="bulan_pilihan" value="September" class="rounded">
+                          <span style="font-size: ${baseSize * 0.9}px; color: ${textColor};">September</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50">
+                          <input type="checkbox" name="bulan_pilihan" value="Oktober" class="rounded">
+                          <span style="font-size: ${baseSize * 0.9}px; color: ${textColor};">Oktober</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50">
+                          <input type="checkbox" name="bulan_pilihan" value="November" class="rounded">
+                          <span style="font-size: ${baseSize * 0.9}px; color: ${textColor};">November</span>
+                        </label>
+                        <label class="flex items-center space-x-2 cursor-pointer p-2 rounded hover:bg-gray-50">
+                          <input type="checkbox" name="bulan_pilihan" value="Desember" class="rounded">
+                          <span style="font-size: ${baseSize * 0.9}px; color: ${textColor};">Desember</span>
+                        </label>
+                      </div>
+                    </div>
+                    <div class="mt-2 flex gap-2">
+                      <button 
+                        type="button" 
+                        onclick="selectAllMonths()"
+                        class="px-3 py-1 text-sm rounded border hover:bg-gray-50"
+                        style="border-color: ${primaryColor}; color: ${primaryColor}; font-size: ${baseSize * 0.8}px;"
+                      >
+                        Pilih Semua
+                      </button>
+                      <button 
+                        type="button" 
+                        onclick="clearAllMonths()"
+                        class="px-3 py-1 text-sm rounded border hover:bg-gray-50"
+                        style="border-color: #6b7280; color: #6b7280; font-size: ${baseSize * 0.8}px;"
+                      >
+                        Hapus Semua
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label class="block font-semibold mb-2" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                      Tanggal Bayar
+                    </label>
+                    <input 
+                      type="date" 
+                      name="tanggal_bayar" 
+                      required
+                      class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2"
+                      style="border-color: #d1d5db; font-size: ${baseSize}px; color: ${textColor};"
+                    />
+                  </div>
+
+                  <div>
+                    <label class="block font-semibold mb-2" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                      Status Pembayaran
+                    </label>
+                    <select 
+                      name="status_bayar" 
+                      required
+                      class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2"
+                      style="border-color: #d1d5db; font-size: ${baseSize}px; color: ${textColor};"
+                    >
+                      <option value="">Pilih Status</option>
+                      <option value="Lunas">Lunas</option>
+                      <option value="Belum Lunas">Belum Lunas</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label class="block font-semibold mb-2" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                      Jumlah Pembayaran per Bulan
+                    </label>
+                    <select 
+                      name="total_pembayaran" 
+                      required
+                      class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2"
+                      style="border-color: #d1d5db; font-size: ${baseSize}px; color: ${textColor};"
+                    >
+                      <option value="">Pilih Jumlah Pembayaran</option>
+                      <option value="15000">Rp 15.000 - Guru/Staff (PGRI: Rp 10.000 + Bansoso: Rp 5.000)</option>
+                      <option value="25000">Rp 25.000 - Kepala Sekolah (PGRI: Rp 20.000 + Bansoso: Rp 5.000)</option>
+                    </select>
+                    <p class="text-sm mt-2 p-2 bg-blue-100 rounded" style="color: #1e40af; font-size: ${baseSize * 0.8}px;">
+                      💡 <strong>Petunjuk:</strong> Pilih sesuai dengan jabatan yang diinput di atas
+                    </p>
+                  </div>
+
+                  <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h4 class="font-bold mb-3" style="color: ${primaryColor}; font-size: ${baseSize}px;">
+                      📋 Aturan Iuran PGRI
+                    </h4>
+                    <div class="space-y-2 text-sm" style="color: #374151; font-size: ${baseSize * 0.85}px;">
+                      <div class="flex justify-between">
+                        <span><strong>Guru/Staff:</strong></span>
+                        <span>Rp 15.000/bulan (PGRI: Rp 10.000 + Bansoso: Rp 5.000)</span>
+                      </div>
+                      <div class="flex justify-between">
+                        <span><strong>Kepala Sekolah:</strong></span>
+                        <span>Rp 25.000/bulan (PGRI: Rp 20.000 + Bansoso: Rp 5.000)</span>
+                      </div>
+                    </div>
+                    <p class="text-sm mt-3 p-2 bg-yellow-100 rounded" style="color: #92400e; font-size: ${baseSize * 0.8}px;">
+                      💡 <strong>Penting:</strong> Pilih jumlah pembayaran yang sesuai dengan jabatan. Total akan dikalikan dengan jumlah bulan yang dipilih.
+                    </p>
+                  </div>
+
+                  <div class="flex gap-3 pt-4">
+                    <button 
+                      type="button"
+                      onclick="closeModal()"
+                      class="flex-1 px-4 py-2 border rounded-lg font-semibold transition-colors"
+                      style="border-color: #d1d5db; color: ${textColor}; font-size: ${baseSize}px;"
+                    >
+                      Batal
+                    </button>
+                    <button 
+                      type="submit"
+                      class="flex-1 px-4 py-2 rounded-lg text-white font-semibold transition-all duration-200 hover:shadow-lg"
+                      style="background-color: ${primaryColor}; font-size: ${baseSize}px;"
+                      ${isLoading ? 'disabled' : ''}
+                    >
+                      ${isLoading ? 'Menyimpan...' : 'Simpan'}
+                    </button>
+                  </div>
+                  </form>
+                </div>
+
+                <!-- CSV Import Tab -->
+                <div id="csvContent" class="tab-content hidden">
+                  <div class="space-y-6">
+                    <!-- Step-by-step Guide -->
+                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6">
+                      <h3 class="font-bold mb-4 flex items-center" style="color: ${primaryColor}; font-size: ${baseSize * 1.2}px;">
+                        📋 Panduan Import Data CSV
+                      </h3>
+                      <div class="grid md:grid-cols-3 gap-4">
+                        <!-- Step 1 -->
+                        <div class="bg-white rounded-lg p-4 border border-blue-100">
+                          <div class="flex items-center mb-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold mr-3" style="background-color: ${primaryColor}; font-size: ${baseSize * 0.8}px;">
+                              1
+                            </div>
+                            <h4 class="font-bold" style="color: ${primaryColor}; font-size: ${baseSize * 0.9}px;">
+                              Download Template
+                            </h4>
+                          </div>
+                          <p class="text-sm mb-3" style="color: #374151; font-size: ${baseSize * 0.8}px;">
+                            Download template CSV dengan format yang sudah sesuai
+                          </p>
+                          <button 
+                            type="button"
+                            onclick="downloadCSVTemplate()"
+                            class="w-full px-4 py-2 rounded-lg text-white font-semibold transition-all duration-200 hover:shadow-lg flex items-center justify-center"
+                            style="background-color: ${accentColor}; font-size: ${baseSize * 0.85}px;"
+                          >
+                            📥 Download Template
+                          </button>
+                        </div>
+
+                        <!-- Step 2 -->
+                        <div class="bg-white rounded-lg p-4 border border-green-100">
+                          <div class="flex items-center mb-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold mr-3" style="background-color: #16a34a; font-size: ${baseSize * 0.8}px;">
+                              2
+                            </div>
+                            <h4 class="font-bold" style="color: #16a34a; font-size: ${baseSize * 0.9}px;">
+                              Isi Data
+                            </h4>
+                          </div>
+                          <p class="text-sm mb-3" style="color: #374151; font-size: ${baseSize * 0.8}px;">
+                            Buka file template dan isi data sesuai format yang disediakan
+                          </p>
+                          <div class="bg-green-50 p-2 rounded text-xs" style="color: #166534; font-size: ${baseSize * 0.75}px;">
+                            ✓ Gunakan Excel atau Google Sheets<br>
+                            ✓ Jangan ubah nama kolom<br>
+                            ✓ Simpan sebagai .csv
+                          </div>
+                        </div>
+
+                        <!-- Step 3 -->
+                        <div class="bg-white rounded-lg p-4 border border-purple-100">
+                          <div class="flex items-center mb-3">
+                            <div class="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold mr-3" style="background-color: #7c3aed; font-size: ${baseSize * 0.8}px;">
+                              3
+                            </div>
+                            <h4 class="font-bold" style="color: #7c3aed; font-size: ${baseSize * 0.9}px;">
+                              Upload & Import
+                            </h4>
+                          </div>
+                          <p class="text-sm mb-3" style="color: #374151; font-size: ${baseSize * 0.8}px;">
+                            Upload file CSV yang sudah diisi dan konfirmasi import
+                          </p>
+                          <div class="bg-purple-50 p-2 rounded text-xs" style="color: #6b21a8; font-size: ${baseSize * 0.75}px;">
+                            ✓ Preview data sebelum import<br>
+                            ✓ Validasi otomatis<br>
+                            ✓ Import batch data
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Upload Section -->
+                    <div class="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                      <h4 class="font-bold mb-4 flex items-center" style="color: ${primaryColor}; font-size: ${baseSize * 1.1}px;">
+                        📤 Upload File CSV
+                      </h4>
+                      
+                      <form onsubmit="handleCSVUpload(event)" class="space-y-4">
+                        <div>
+                          <label class="block font-semibold mb-2" style="font-size: ${baseSize * 0.9}px; color: ${textColor};">
+                            Pilih File CSV
+                          </label>
+                          <div class="relative">
+                            <input 
+                              type="file" 
+                              name="csvFile" 
+                              accept=".csv"
+                              required
+                              class="w-full px-4 py-3 border-2 border-dashed rounded-lg focus:outline-none focus:ring-2 transition-all duration-200 hover:border-gray-400"
+                              style="border-color: #d1d5db; font-size: ${baseSize}px; color: ${textColor};"
+                            />
+                            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <div class="text-center" style="color: #6b7280;">
+                                <div class="text-2xl mb-2">📁</div>
+                                <div style="font-size: ${baseSize * 0.9}px;">Klik untuk memilih file atau drag & drop</div>
+                              </div>
+                            </div>
+                          </div>
+                          <p class="text-sm mt-2 flex items-center" style="color: #6b7280; font-size: ${baseSize * 0.8}px;">
+                            <span class="mr-2">ℹ️</span>
+                            Hanya file .csv yang diperbolehkan (maksimal 999 baris data)
+                          </p>
+                        </div>
+
+                        <!-- Format Requirements -->
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                          <h5 class="font-bold mb-3 flex items-center" style="color: #92400e; font-size: ${baseSize * 0.9}px;">
+                            ⚠️ Persyaratan Format CSV
+                          </h5>
+                          <div class="grid md:grid-cols-2 gap-3 text-sm" style="color: #92400e; font-size: ${baseSize * 0.8}px;">
+                            <div class="space-y-1">
+                              <div><strong>• nama:</strong> Nama Lengkap</div>
+                              <div><strong>• jabatan:</strong> Jabatan/Posisi</div>
+                              <div><strong>• bulan:</strong> Januari, Februari, dll</div>
+                              <div><strong>• tahun:</strong> 2024, 2025, dll</div>
+                            </div>
+                            <div class="space-y-1">
+                              <div><strong>• tanggal_bayar:</strong> YYYY-MM-DD</div>
+                              <div><strong>• status_bayar:</strong> Lunas / Belum Lunas</div>
+                              <div><strong>• total_pembayaran:</strong> 15000 / 25000</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div class="flex gap-3">
+                          <button 
+                            type="submit"
+                            class="flex-1 px-6 py-3 rounded-lg text-white font-semibold transition-all duration-200 hover:shadow-lg flex items-center justify-center"
+                            style="background-color: ${primaryColor}; font-size: ${baseSize}px;"
+                            ${isLoading ? 'disabled' : ''}
+                          >
+                            ${isLoading ? '⏳ Memproses...' : '📤 Upload & Validasi Data'}
+                          </button>
+                          <button 
+                            type="button"
+                            onclick="switchTab('manual')"
+                            class="px-6 py-3 border rounded-lg font-semibold transition-colors hover:bg-gray-50"
+                            style="border-color: #d1d5db; color: ${textColor}; font-size: ${baseSize}px;"
+                          >
+                            ← Kembali ke Manual
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+
+                    <!-- Preview Section -->
+                    <div id="csvPreview" class="hidden bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                      <div class="flex items-center justify-between mb-4">
+                        <h4 class="font-bold flex items-center" style="color: ${primaryColor}; font-size: ${baseSize * 1.1}px;">
+                          👀 Preview Data CSV
+                        </h4>
+                        <div class="flex items-center space-x-2">
+                          <div class="w-3 h-3 bg-green-500 rounded-full"></div>
+                          <span class="text-sm font-medium" style="color: #16a34a; font-size: ${baseSize * 0.8}px;">
+                            Data Valid & Siap Import
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <div id="csvPreviewContent" class="overflow-x-auto mb-4">
+                        <!-- Preview content will be populated here -->
+                      </div>
+                      
+                      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                        <div class="flex items-center mb-2">
+                          <span class="text-2xl mr-3">📊</span>
+                          <h5 class="font-bold" style="color: ${primaryColor}; font-size: ${baseSize * 0.9}px;">
+                            Ringkasan Import
+                          </h5>
+                        </div>
+                        <div id="csvSummary" class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                          <!-- Summary will be populated by JavaScript -->
+                        </div>
+                      </div>
+                      
+                      <div class="flex gap-3">
+                        <button 
+                          type="button"
+                          onclick="confirmCSVImport()"
+                          class="flex-1 px-6 py-3 rounded-lg text-white font-semibold transition-all duration-200 hover:shadow-lg flex items-center justify-center"
+                          style="background-color: #16a34a; font-size: ${baseSize}px;"
+                          ${isLoading ? 'disabled' : ''}
+                        >
+                          ${isLoading ? '⏳ Mengimport...' : '✅ Konfirmasi & Import Data'}
+                        </button>
+                        <button 
+                          type="button"
+                          onclick="cancelCSVImport()"
+                          class="px-6 py-3 border rounded-lg font-semibold transition-colors hover:bg-gray-50"
+                          style="border-color: #d1d5db; color: ${textColor}; font-size: ${baseSize}px;"
+                        >
+                          ❌ Batal Import
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function onConfigChange(config) {
+      renderApp();
+    }
+
+    if (window.elementSdk) {
+      window.elementSdk.init({
+        defaultConfig,
+        onConfigChange,
+        mapToCapabilities: (config) => ({
+          recolorables: [
+            {
+              get: () => config.background_color || defaultConfig.background_color,
+              set: (value) => {
+                config.background_color = value;
+                window.elementSdk.setConfig({ background_color: value });
+              }
+            },
+            {
+              get: () => config.card_color || defaultConfig.card_color,
+              set: (value) => {
+                config.card_color = value;
+                window.elementSdk.setConfig({ card_color: value });
+              }
+            },
+            {
+              get: () => config.text_color || defaultConfig.text_color,
+              set: (value) => {
+                config.text_color = value;
+                window.elementSdk.setConfig({ text_color: value });
+              }
+            },
+            {
+              get: () => config.primary_color || defaultConfig.primary_color,
+              set: (value) => {
+                config.primary_color = value;
+                window.elementSdk.setConfig({ primary_color: value });
+              }
+            },
+            {
+              get: () => config.accent_color || defaultConfig.accent_color,
+              set: (value) => {
+                config.accent_color = value;
+                window.elementSdk.setConfig({ accent_color: value });
+              }
+            }
+          ],
+          borderables: [],
+          fontEditable: {
+            get: () => config.font_family || defaultConfig.font_family,
+            set: (value) => {
+              config.font_family = value;
+              window.elementSdk.setConfig({ font_family: value });
+            }
+          },
+          fontSizeable: {
+            get: () => config.font_size || defaultConfig.font_size,
+            set: (value) => {
+              config.font_size = value;
+              window.elementSdk.setConfig({ font_size: value });
+            }
+          }
+        }),
+        mapToEditPanelValues: (config) => new Map([
+          ["judul_utama", config.judul_utama || defaultConfig.judul_utama],
+          ["subjudul", config.subjudul || defaultConfig.subjudul],
+          ["label_no", config.label_no || defaultConfig.label_no],
+          ["label_nama", config.label_nama || defaultConfig.label_nama],
+          ["label_jabatan", config.label_jabatan || defaultConfig.label_jabatan],
+          ["label_bulan", config.label_bulan || defaultConfig.label_bulan],
+          ["label_total", config.label_total || defaultConfig.label_total],
+          ["label_aksi", config.label_aksi || defaultConfig.label_aksi],
+          ["tombol_tambah", config.tombol_tambah || defaultConfig.tombol_tambah],
+          ["tombol_cetak", config.tombol_cetak || defaultConfig.tombol_cetak]
+        ])
+      });
+    }
+
+    initApp();
+  </script>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9989c467c5abfd3b',t:'MTc2MjE1MDg0MS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
